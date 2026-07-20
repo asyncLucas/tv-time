@@ -30,6 +30,9 @@
     "@angular/router": "^20.3.0",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
+    "y-indexeddb": "^9.0.12",
+    "y-webrtc": "^10.3.0",
+    "yjs": "^13.6.31",
     "zone.js": "~0.15.0"
   },
   "devDependencies": {

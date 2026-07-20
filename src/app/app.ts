@@ -1,12 +1,36 @@
-import { Component, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Component, inject, signal } from '@angular/core';
+import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { LibraryStore } from './core/library.store';
+import { SyncService } from './core/sync.service';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive],
   templateUrl: './app.html',
-  styleUrl: './app.scss'
+  styleUrl: './app.scss',
 })
 export class App {
-  protected readonly title = signal('tvtime-revival');
+  private store = inject(LibraryStore);
+  protected sync = inject(SyncService);
+  protected readonly ready = signal(false);
+  protected readonly error = signal<string | null>(null);
+
+  protected readonly nav = [
+    { path: '', label: 'Up Next', icon: '▶', exact: true },
+    { path: 'shows', label: 'Shows', icon: '▦', exact: false },
+    { path: 'movies', label: 'Movies', icon: '◱', exact: false },
+    { path: 'lists', label: 'Lists', icon: '☰', exact: false },
+    { path: 'profile', label: 'Profile', icon: '◉', exact: false },
+    { path: 'settings', label: 'Settings', icon: '⚙', exact: false },
+  ];
+
+  constructor() {
+    this.store
+      .init()
+      .then(() => {
+        this.ready.set(true);
+        this.sync.autoStart();
+      })
+      .catch((e) => this.error.set(String(e?.message ?? e)));
+  }
 }

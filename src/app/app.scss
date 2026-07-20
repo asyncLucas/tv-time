@@ -1,0 +1,187 @@
+:host {
+  display: block;
+  min-height: 100%;
+}
+
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  background: var(--bg-elev);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  padding: 22px 16px;
+  gap: 8px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 20px;
+}
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--gold);
+  color: #1a1600;
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: -0.03em;
+}
+.brand-text strong {
+  display: block;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+.brand-text small {
+  color: var(--gold);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+.nav a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.14s ease;
+}
+.nav a .ic {
+  width: 20px;
+  text-align: center;
+  font-size: 14px;
+  opacity: 0.85;
+}
+.nav a:hover {
+  background: var(--bg-elev-2);
+  color: var(--text);
+}
+.nav a.active {
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+.sync-badge {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-faint);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elev-2);
+}
+.sync-badge .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.sync-badge.on {
+  color: var(--good);
+}
+.sync-badge.on .dot {
+  background: var(--good);
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.15);
+}
+
+.content {
+  min-width: 0;
+}
+
+/* boot / loading */
+.boot {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 18px;
+  color: var(--text-dim);
+}
+.boot .pulse {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  background: var(--gold);
+  color: #1a1600;
+  font-weight: 800;
+  font-size: 24px;
+  display: grid;
+  place-items: center;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.boot-error h1 {
+  color: var(--bad);
+  font-size: 20px;
+}
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: fixed;
+    bottom: 0;
+    top: auto;
+    height: auto;
+    width: 100%;
+    flex-direction: row;
+    align-items: center;
+    padding: 8px;
+    border-right: none;
+    border-top: 1px solid var(--line);
+    z-index: 50;
+  }
+  .brand,
+  .sync-badge {
+    display: none;
+  }
+  .nav {
+    flex-direction: row;
+    justify-content: space-around;
+    width: 100%;
+    margin: 0;
+  }
+  .nav a .lbl {
+    display: none;
+  }
+  .content {
+    padding-bottom: 64px;
+  }
+}

@@ -19,7 +19,7 @@ PROJECT = os.path.dirname(HERE)
 BACKUP = os.environ.get("TVTIME_BACKUP", os.path.expanduser("~/tvtime-backup/account"))
 EXPORT = os.path.join(BACKUP, "export")
 DIOCACHE = os.path.join(BACKUP, "diocache-json")
-OUT = os.path.join(PROJECT, "src", "assets", "seed.json")
+OUT = os.path.join(PROJECT, "public", "seed.json")
 
 
 def rows(name):
