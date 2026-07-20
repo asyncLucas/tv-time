@@ -70,10 +70,15 @@
   transition: all 0.14s ease;
 }
 .nav a .ic {
-  width: 20px;
-  text-align: center;
-  font-size: 14px;
-  opacity: 0.85;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+.install lucide-icon {
+  display: inline-flex;
 }
 .nav a:hover {
   background: var(--bg-elev-2);
@@ -250,6 +255,17 @@
   .nav a .lbl {
     display: none;
   }
+  /* roomier tap targets + larger icons on mobile */
+  .nav a {
+    padding: 12px 14px;
+  }
+  .nav a .ic {
+    width: auto;
+  }
+  .nav a .ic svg {
+    width: 26px;
+    height: 26px;
+  }
   .content {
     padding-bottom: 64px;
   }
@@ -311,13 +327,14 @@
   }
   .install-banner .ib-close {
     flex-shrink: 0;
+    display: grid;
+    place-items: center;
     width: 30px;
     height: 30px;
     border-radius: 8px;
     border: none;
     background: transparent;
     color: var(--text-faint);
-    font-size: 13px;
   }
   .install-banner .ib-close:hover {
     background: var(--bg-elev);

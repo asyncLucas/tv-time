@@ -16,7 +16,7 @@
             routerLinkActive="active"
             [routerLinkActiveOptions]="{ exact: item.exact }"
           >
-            <span class="ic">{{ item.icon }}</span>
+            <lucide-icon [img]="item.icon" class="ic" [size]="20" [strokeWidth]="2" />
             <span class="lbl">{{ item.label }}</span>
           </a>
         }
@@ -24,7 +24,7 @@
 
       @if (pwa.canInstall()) {
         <button class="install" (click)="pwa.promptInstall()">
-          <span class="ic">⤓</span><span class="lbl">Install app</span>
+          <lucide-icon [img]="DownloadIcon" [size]="17" /><span class="lbl">Install app</span>
         </button>
       }
 
@@ -46,7 +46,9 @@
           <small>Add to your home screen — works offline</small>
         </div>
         <button class="ib-install" (click)="pwa.promptInstall()">Install</button>
-        <button class="ib-close" (click)="pwa.dismissInstall()" aria-label="Dismiss">✕</button>
+        <button class="ib-close" (click)="pwa.dismissInstall()" aria-label="Dismiss">
+          <lucide-icon [img]="XIcon" [size]="16" />
+        </button>
       </div>
     }
 
