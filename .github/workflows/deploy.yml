@@ -1,0 +1,60 @@
+name: Deploy to GitHub Pages
+
+# Auto-deploy the PWA to GitHub Pages on every push to main.
+# The build uses the committed public/seed.json (the backup itself is not in the
+# repo), so CI never needs the raw TV Time backup.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Allow GITHUB_TOKEN to publish to Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One in-flight deploy at a time; don't cancel a running one
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Project page lives under /tv-time/ — base-href must match.
+      - run: npm run build -- --base-href=/tv-time/
+
+      # SPA + deep-link fallback: GitHub Pages serves 404.html for unknown
+      # paths, so mirror index.html into it for client-side routes.
+      - run: cp dist/tvtime-revival/browser/index.html dist/tvtime-revival/browser/404.html
+
+      # Prevent Jekyll from mangling files that start with an underscore.
+      - run: touch dist/tvtime-revival/browser/.nojekyll
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/tvtime-revival/browser
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
