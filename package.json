@@ -7,7 +7,8 @@
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
-    "seed": "python3 tools/build-seed.py"
+    "seed": "python3 tools/build-seed.py",
+    "icons": "python3 tools/gen-icons.py"
   },
   "prettier": {
     "printWidth": 100,

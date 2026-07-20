@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { LibraryStore } from './core/library.store';
 import { SyncService } from './core/sync.service';
+import { PwaService } from './core/pwa.service';
 
 @Component({
   selector: 'app-root',
@@ -12,6 +13,7 @@ import { SyncService } from './core/sync.service';
 export class App {
   private store = inject(LibraryStore);
   protected sync = inject(SyncService);
+  protected pwa = inject(PwaService);
   protected readonly ready = signal(false);
   protected readonly error = signal<string | null>(null);
 
@@ -25,6 +27,7 @@ export class App {
   ];
 
   constructor() {
+    this.pwa.init();
     this.store
       .init()
       .then(() => {

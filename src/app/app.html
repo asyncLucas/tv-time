@@ -22,15 +22,28 @@
         }
       </nav>
 
+      @if (pwa.canInstall()) {
+        <button class="install" (click)="pwa.promptInstall()">
+          <span class="ic">⤓</span><span class="lbl">Install app</span>
+        </button>
+      }
+
       <div class="sync-badge" [class.on]="sync.connected()">
         <span class="dot"></span>
-        {{ sync.connected() ? sync.peers() + ' peer(s)' : 'local only' }}
+        {{ sync.connected() ? sync.peers() + ' peer(s)' : (pwa.installed() ? 'installed · local' : 'local only') }}
       </div>
     </aside>
 
     <main class="content">
       <router-outlet />
     </main>
+
+    @if (pwa.updateReady()) {
+      <div class="update-toast">
+        <span>A new version is ready.</span>
+        <button (click)="pwa.applyUpdate()">Refresh</button>
+      </div>
+    }
   </div>
 } @else if (error()) {
   <div class="boot boot-error">

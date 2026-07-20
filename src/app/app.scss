@@ -84,6 +84,30 @@
   color: var(--gold);
 }
 
+.install {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--gold);
+  color: #1a1600;
+  font-size: 13.5px;
+  font-weight: 700;
+  transition: filter 0.14s ease;
+}
+.install:hover {
+  filter: brightness(1.08);
+}
+.install .ic {
+  font-size: 15px;
+}
+.install + .sync-badge {
+  margin-top: 8px;
+}
+
 .sync-badge {
   margin-top: auto;
   display: flex;
@@ -112,6 +136,40 @@
 
 .content {
   min-width: 0;
+}
+
+.update-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 16px 12px 20px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lg);
+  font-size: 13.5px;
+  font-weight: 600;
+  animation: toast-in 0.3s ease;
+}
+.update-toast button {
+  border: none;
+  background: var(--gold);
+  color: #1a1600;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 7px 16px;
+  border-radius: 999px;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
 }
 
 /* boot / loading */
