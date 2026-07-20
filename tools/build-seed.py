@@ -19,7 +19,10 @@ PROJECT = os.path.dirname(HERE)
 BACKUP = os.environ.get("TVTIME_BACKUP", os.path.expanduser("~/tvtime-backup/account"))
 EXPORT = os.path.join(BACKUP, "export")
 DIOCACHE = os.path.join(BACKUP, "diocache-json")
-OUT = os.path.join(PROJECT, "public", "seed.json")
+# Personal data is NOT bundled with the app (that would ship one user's library
+# to every visitor). Generate it to a git-ignored local file and import it once
+# via the app's onboarding screen; it then persists in the browser.
+OUT = os.path.join(PROJECT, "seed.local.json")
 
 
 def rows(name):

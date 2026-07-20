@@ -1,4 +1,6 @@
-@if (ready()) {
+@if (ready() && !hasLibrary()) {
+  <app-onboarding />
+} @else if (ready()) {
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">

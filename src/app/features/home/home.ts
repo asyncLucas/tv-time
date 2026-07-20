@@ -16,8 +16,14 @@ interface UpNext {
   template: `
     <div class="page">
       <div class="hello">
-        <h1>Welcome back, {{ store.profile()?.name || 'friend' }}</h1>
-        <div class="sub">Your library, restored from the TV Time backup — now yours to keep.</div>
+        <h1>{{ store.profile()?.name ? 'Welcome back, ' + store.profile()?.name : 'Welcome to TV Time Revival' }}</h1>
+        <div class="sub">
+          @if (store.stats().showsFollowed || store.stats().moviesTracked) {
+            Your library — local-first, and yours to keep.
+          } @else {
+            Import a TV Time backup or add titles to start tracking.
+          }
+        </div>
       </div>
 
       <div class="stats">

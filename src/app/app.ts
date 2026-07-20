@@ -1,5 +1,6 @@
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { Onboarding } from './features/onboarding/onboarding';
 import {
   LucideAngularModule,
   Play,
@@ -20,7 +21,7 @@ import { LocalConfigService } from './core/local-config.service';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LucideAngularModule, Onboarding],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -32,6 +33,8 @@ export class App {
   protected pwa = inject(PwaService);
   protected readonly ready = signal(false);
   protected readonly error = signal<string | null>(null);
+  /** Has this device set up a library yet? (else show onboarding) */
+  protected readonly hasLibrary = computed(() => this.store.hasLibrary());
 
   // lucide icon refs exposed to the template for the install button + banner
   protected readonly DownloadIcon = Download;

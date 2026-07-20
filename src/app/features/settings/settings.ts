@@ -5,6 +5,7 @@ import { SyncService } from '../../core/sync.service';
 import { GistSyncService } from '../../core/gist-sync.service';
 import { DocService, DB_NAME } from '../../core/doc.service';
 import { LocalConfigService } from '../../core/local-config.service';
+import { SeedService } from '../../core/seed.service';
 
 @Component({
   selector: 'app-settings',
@@ -486,7 +487,9 @@ export class Settings {
     if (!confirm('Delete all local data on this device? Your export file and synced devices are unaffected.'))
       return;
     this.sync.forget();
+    this.gist.forget();
     await LocalConfigService.destroy(); // device-local API key + sync config
+    await SeedService.destroy(); // imported catalog
     indexedDB.deleteDatabase(DB_NAME); // synced watch-state doc
     location.reload();
   }

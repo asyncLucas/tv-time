@@ -42,7 +42,7 @@ export class LibraryStore {
 
     const seed = await this.seedSvc.load();
     await this.docs.whenReady();
-    this.docs.bootstrapFromSeed(seed);
+    if (seed) this.docs.bootstrapFromSeed(seed);
 
     this.bind(this.docs.showState, this.showStateSig);
     this.bind(this.docs.movieState, this.movieStateSig);
@@ -55,6 +55,35 @@ export class LibraryStore {
     const refresh = () => sig.set(map.toJSON() as Record<string, T>);
     refresh();
     map.observe(refresh);
+  }
+
+  // -------------------------------------------------------------------------
+  // Onboarding
+  // -------------------------------------------------------------------------
+  /** True once this device has a catalog; false → show onboarding. */
+  readonly hasLibrary = computed(() => this.seedSvc.hasLibrary());
+
+  /** Adopt an imported TV Time backup file as this device's library. */
+  async importLibrary(text: string): Promise<void> {
+    let parsed: any;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error('That file is not valid JSON.');
+    }
+    if (parsed?.kind === 'tvtime-revival-state') {
+      throw new Error(
+        'That is a watch-state export — import it under Settings → Import state. ' +
+          'Here you import your full library backup (seed).',
+      );
+    }
+    const seed = await this.seedSvc.importSeed(parsed);
+    this.docs.bootstrapFromSeed(seed);
+  }
+
+  /** Start with an empty, anonymous library. */
+  startEmpty(): Promise<void> {
+    return this.seedSvc.startEmpty().then(() => undefined);
   }
 
   // -------------------------------------------------------------------------

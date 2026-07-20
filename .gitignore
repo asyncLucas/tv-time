@@ -41,3 +41,7 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Personal library data — never commit or ship (contains your name/history)
+seed.local.json
+public/seed.json
