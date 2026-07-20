@@ -1,6 +1,7 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { WebrtcProvider } from 'y-webrtc';
 import { DocService } from './doc.service';
+import { LocalConfigService } from './local-config.service';
 
 /**
  * Decentralized sync for a single user's own device fleet.
@@ -17,6 +18,7 @@ import { DocService } from './doc.service';
 @Injectable({ providedIn: 'root' })
 export class SyncService {
   private docs = inject(DocService);
+  private config = inject(LocalConfigService);
   private provider?: WebrtcProvider;
 
   readonly connected = signal(false);
@@ -29,10 +31,10 @@ export class SyncService {
     'wss://y-webrtc-signaling-eu.herokuapp.com',
   ];
 
-  /** If the user previously enabled sync, reconnect on launch. */
+  /** If the user previously enabled sync, reconnect on launch (device-local). */
   autoStart(): void {
-    const room = this.docs.settings.get('syncRoom');
-    const pass = this.docs.settings.get('syncPass');
+    const room = this.config.syncRoom();
+    const pass = this.config.syncPass();
     if (room && pass) this.connect(room, pass);
   }
 
@@ -52,9 +54,9 @@ export class SyncService {
     });
     this.connected.set(true);
 
-    // remember for next launch
-    this.docs.settings.set('syncRoom', room);
-    this.docs.settings.set('syncPass', password);
+    // remember for next launch — device-local, never synced to peers
+    this.config.set('syncRoom', room);
+    this.config.set('syncPass', password);
   }
 
   disconnect(): void {
@@ -67,7 +69,7 @@ export class SyncService {
 
   forget(): void {
     this.disconnect();
-    this.docs.settings.delete('syncRoom');
-    this.docs.settings.delete('syncPass');
+    this.config.delete('syncRoom');
+    this.config.delete('syncPass');
   }
 }

@@ -38,6 +38,18 @@
       <router-outlet />
     </main>
 
+    @if (pwa.canInstall() && !pwa.bannerDismissed()) {
+      <div class="install-banner">
+        <span class="ib-mark">tv</span>
+        <div class="ib-text">
+          <strong>Install TV Time</strong>
+          <small>Add to your home screen — works offline</small>
+        </div>
+        <button class="ib-install" (click)="pwa.promptInstall()">Install</button>
+        <button class="ib-close" (click)="pwa.dismissInstall()" aria-label="Dismiss">✕</button>
+      </div>
+    }
+
     @if (pwa.updateReady()) {
       <div class="update-toast">
         <span>A new version is ready.</span>

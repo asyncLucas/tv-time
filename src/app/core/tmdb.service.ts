@@ -1,5 +1,5 @@
-import { Injectable, inject, signal } from '@angular/core';
-import { LibraryStore } from './library.store';
+import { Injectable, computed, inject } from '@angular/core';
+import { LocalConfigService } from './local-config.service';
 
 export interface TmdbImages {
   poster: (path: string | null, size?: PosterSize) => string | null;
@@ -47,21 +47,17 @@ const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days for JSON
  */
 @Injectable({ providedIn: 'root' })
 export class TmdbService {
-  private store = inject(LibraryStore);
+  private config = inject(LocalConfigService);
 
-  readonly hasKey = signal(false);
+  /** Reactive: flips on as soon as the device-local key is loaded or set. */
+  readonly hasKey = computed(() => !!this.config.tmdbKey()?.trim());
   private tmdbIdByTvdb = new Map<string, number | null>();
 
-  constructor() {
-    this.hasKey.set(!!this.apiKey());
-  }
-
   apiKey(): string | undefined {
-    return this.store.getSetting<string>('tmdbKey')?.trim() || undefined;
+    return this.config.tmdbKey()?.trim() || undefined;
   }
   setKey(key: string): void {
-    this.store.setSetting('tmdbKey', key.trim());
-    this.hasKey.set(!!key.trim());
+    this.config.set('tmdbKey', key.trim());
   }
 
   poster(path: string | null, size: PosterSize = 'w342'): string | null {

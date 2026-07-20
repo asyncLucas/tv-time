@@ -2,7 +2,8 @@ import { Component, inject, signal } from '@angular/core';
 import { LibraryStore } from '../../core/library.store';
 import { TmdbService } from '../../core/tmdb.service';
 import { SyncService } from '../../core/sync.service';
-import { DocService } from '../../core/doc.service';
+import { DocService, DB_NAME } from '../../core/doc.service';
+import { LocalConfigService } from '../../core/local-config.service';
 
 @Component({
   selector: 'app-settings',
@@ -78,6 +79,16 @@ import { DocService } from '../../core/doc.service';
           <button class="btn ghost" (click)="clearCache()">Clear TMDB cache</button>
         </div>
         @if (msg()) { <div class="status ok">{{ msg() }}</div> }
+
+        <details class="fmt">
+          <summary><span class="info-blink" aria-hidden="true">ⓘ</span> Expected JSON structure</summary>
+          <p class="fmt-note">
+            Only <code>kind</code> is required; every other key is optional and merged in (last-write-wins
+            per entry). This is exactly what <strong>Export state</strong> produces — the easiest way to get
+            a valid file is to export one first.
+          </p>
+          <pre>{{ importFormat }}</pre>
+        </details>
       </section>
 
       <div class="danger">
@@ -160,6 +171,70 @@ import { DocService } from '../../core/doc.service';
       .danger-btn:hover {
         background: rgba(248, 113, 113, 0.1);
       }
+      .fmt {
+        margin-top: 16px;
+        border-top: 1px solid var(--line-soft);
+        padding-top: 14px;
+      }
+      .fmt summary {
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-dim);
+        list-style: none;
+      }
+      .fmt summary::before {
+        content: '▸ ';
+        color: var(--text-faint);
+      }
+      .fmt[open] summary::before {
+        content: '▾ ';
+      }
+      .fmt summary:hover {
+        color: var(--text);
+      }
+      .info-blink {
+        color: var(--gold);
+        font-size: 14px;
+        animation: info-blink 1.3s ease-in-out infinite;
+      }
+      @keyframes info-blink {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.25;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .info-blink {
+          animation: none;
+        }
+      }
+      .fmt-note {
+        color: var(--text-dim);
+        font-size: 12.5px;
+        line-height: 1.55;
+        margin: 12px 0 10px;
+      }
+      .fmt-note code {
+        background: var(--bg-elev-2);
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-size: 12px;
+      }
+      .fmt pre {
+        background: #0a0b0e;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--text-dim);
+        font-family: 'SF Mono', ui-monospace, 'Cascadia Code', Menlo, monospace;
+      }
     `,
   ],
 })
@@ -173,6 +248,41 @@ export class Settings {
   room = signal('');
   pass = signal('');
   msg = signal('');
+
+  /** Human-readable shape of a valid import file (annotated). */
+  readonly importFormat = `{
+  "kind": "tvtime-revival-state",   // required — the file is rejected without it
+  "schema": 1,
+  "showState": {
+    "<show-uuid>": {
+      "status": "watching",         // watching | completed | watchlist | dropped | none
+      "favorite": false,
+      "rating": null,               // 1–10 or null
+      "addedAt": "2020-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z"
+    }
+  },
+  "movieState": {
+    "<movie-uuid>": {
+      "watched": true,
+      "watchedAt": "2019-09-03T10:32:47Z",
+      "watchlist": false,
+      "favorite": false,
+      "rating": null
+    }
+  },
+  "episodeWatches": {
+    "<tvdbId>:<season>:<episode>": {  // e.g. "323168:1:6"
+      "tvdbId": "323168", "season": 1, "episode": 6,
+      "watchedAt": "2026-01-18T22:20:16Z", "nbTimes": 1
+    }
+  },
+  "lists": {
+    "<list-id>": { "name": "para assistir", "items": [ { "title": "…", "uuid": "…" } ] }
+  }
+  // note: your TMDB key + sync settings are device-local (IndexedDB) and are
+  // intentionally NOT part of this file — set them per device under Settings.
+}`;
 
   saveKey(): void {
     this.tmdb.setKey(this.key());
@@ -211,10 +321,12 @@ export class Settings {
     this.flash('TMDB cache cleared.');
   }
 
-  reset(): void {
+  async reset(): Promise<void> {
     if (!confirm('Delete all local data on this device? Your export file and synced devices are unaffected.'))
       return;
-    indexedDB.deleteDatabase('tvtime-revival');
+    this.sync.forget();
+    await LocalConfigService.destroy(); // device-local API key + sync config
+    indexedDB.deleteDatabase(DB_NAME); // synced watch-state doc
     location.reload();
   }
 

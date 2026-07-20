@@ -3,6 +3,7 @@ import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { LibraryStore } from './core/library.store';
 import { SyncService } from './core/sync.service';
 import { PwaService } from './core/pwa.service';
+import { LocalConfigService } from './core/local-config.service';
 
 @Component({
   selector: 'app-root',
@@ -12,6 +13,7 @@ import { PwaService } from './core/pwa.service';
 })
 export class App {
   private store = inject(LibraryStore);
+  private config = inject(LocalConfigService);
   protected sync = inject(SyncService);
   protected pwa = inject(PwaService);
   protected readonly ready = signal(false);
@@ -28,11 +30,10 @@ export class App {
 
   constructor() {
     this.pwa.init();
-    this.store
-      .init()
+    Promise.all([this.store.init(), this.config.init()])
       .then(() => {
         this.ready.set(true);
-        this.sync.autoStart();
+        this.sync.autoStart(); // reconnects if device-local sync config exists
       })
       .catch((e) => this.error.set(String(e?.message ?? e)));
   }

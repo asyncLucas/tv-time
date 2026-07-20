@@ -24,12 +24,16 @@ export class PwaService {
 
   private deferredPrompt: BeforeInstallPromptEvent | null = null;
 
+  private static readonly DISMISS_KEY = 'pwa-install-dismissed';
+
   /** True when the browser has offered an install prompt we can replay. */
   readonly canInstall = signal(false);
   /** True once the app is running as an installed PWA. */
   readonly installed = signal(false);
   /** True when a newer version has been downloaded and is ready to activate. */
   readonly updateReady = signal(false);
+  /** Per-device dismissal of the mobile install banner (persisted, not synced). */
+  readonly bannerDismissed = signal(localStorage.getItem(PwaService.DISMISS_KEY) === '1');
 
   init(): void {
     // already installed? (standalone display mode)
@@ -58,6 +62,12 @@ export class PwaService {
       // proactively poll for a new deploy every 30 min
       setInterval(() => this.swUpdate!.checkForUpdate().catch(() => {}), 30 * 60 * 1000);
     }
+  }
+
+  /** Dismiss the mobile install banner for good (on this device). */
+  dismissInstall(): void {
+    localStorage.setItem(PwaService.DISMISS_KEY, '1');
+    this.bannerDismissed.set(true);
   }
 
   /** Replay the captured install prompt. Returns whether the user accepted. */
