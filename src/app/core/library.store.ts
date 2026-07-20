@@ -169,6 +169,10 @@ export class LibraryStore {
     const cur = this.docs.movieState.get(uuid) ?? this.defaultMovieState();
     this.docs.movieState.set(uuid, { ...cur, favorite: !cur.favorite, updatedAt: this.now() });
   }
+  rateMovie(uuid: string, rating: number | null): void {
+    const cur = this.docs.movieState.get(uuid) ?? this.defaultMovieState();
+    this.docs.movieState.set(uuid, { ...cur, rating, updatedAt: this.now() });
+  }
 
   setEpisodeWatched(tvdbId: string, season: number, episode: number, watched: boolean): void {
     const key = epKey(tvdbId, season, episode);

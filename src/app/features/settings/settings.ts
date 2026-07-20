@@ -45,12 +45,25 @@ import { LocalConfigService } from '../../core/local-config.service';
           <div class="synced">
             <div>
               <strong>Room: {{ sync.room() }}</strong>
-              <div class="hint">
-                {{ sync.connected() ? 'Connected' : 'Connecting…' }} · {{ sync.peers() }} peer(s) online
+              <div class="sync-state s-{{ sync.status() }}">
+                <span class="dot"></span>
+                @switch (sync.status()) {
+                  @case ('connected') { {{ sync.peers() }} peer(s) connected }
+                  @case ('connecting') { Connecting… searching for peers }
+                  @case ('error') { Couldn't reach the signaling server }
+                  @default { Idle }
+                }
               </div>
             </div>
             <button class="btn" (click)="sync.forget()">Disconnect</button>
           </div>
+          @if (sync.status() === 'error') {
+            <p class="hint err-hint">
+              The signaling server (the rendezvous point that introduces your devices) is unreachable.
+              Try a different one below, or self-host a relay. Your data never flows through it — it only
+              brokers the encrypted peer handshake.
+            </p>
+          }
         } @else {
           <div class="row">
             <input class="in" placeholder="Room name" [value]="room()" (input)="room.set($any($event.target).value)" />
@@ -64,6 +77,24 @@ import { LocalConfigService } from '../../core/local-config.service';
             <button class="btn primary" [disabled]="!room() || !pass()" (click)="connect()">Connect</button>
           </div>
         }
+
+        <details class="fmt">
+          <summary>Advanced · signaling server</summary>
+          <p class="fmt-note">
+            WebRTC needs a reachable rendezvous point to introduce peers. Default:
+            <code>{{ defaultSignaling }}</code>. Paste your own (a self-hosted y-webrtc relay,
+            e.g. on Fly.io / Deno Deploy) to avoid depending on a public one. Leave blank to use the default.
+          </p>
+          <div class="row">
+            <input
+              class="in"
+              placeholder="wss://your-signaling-server"
+              [value]="signaling()"
+              (input)="signaling.set($any($event.target).value)"
+            />
+            <button class="btn" (click)="saveSignaling()">Save</button>
+          </div>
+        </details>
       </section>
 
       <!-- Backup -->
@@ -153,6 +184,47 @@ import { LocalConfigService } from '../../core/local-config.service';
         align-items: center;
         justify-content: space-between;
         gap: 16px;
+      }
+      .sync-state {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text-dim);
+        margin-top: 4px;
+      }
+      .sync-state .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--text-faint);
+      }
+      .sync-state.s-connected {
+        color: var(--good);
+      }
+      .sync-state.s-connected .dot {
+        background: var(--good);
+        box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.15);
+      }
+      .sync-state.s-connecting .dot {
+        background: var(--gold);
+        animation: pulse-dot 1s ease-in-out infinite;
+      }
+      .sync-state.s-error {
+        color: var(--bad);
+      }
+      .sync-state.s-error .dot {
+        background: var(--bad);
+      }
+      @keyframes pulse-dot {
+        50% {
+          opacity: 0.3;
+        }
+      }
+      .err-hint {
+        color: var(--bad) !important;
+        margin-top: 12px !important;
       }
       .file {
         position: relative;
@@ -244,10 +316,14 @@ export class Settings {
   sync = inject(SyncService);
   private docs = inject(DocService);
 
+  private config = inject(LocalConfigService);
+
   key = signal(this.tmdb.apiKey() ?? '');
   room = signal('');
   pass = signal('');
   msg = signal('');
+  signaling = signal(this.config.get<string>('signalingUrl') ?? '');
+  readonly defaultSignaling = 'wss://y-webrtc-eu.fly.dev';
 
   /** Human-readable shape of a valid import file (annotated). */
   readonly importFormat = `{
@@ -291,6 +367,13 @@ export class Settings {
 
   connect(): void {
     this.sync.connect(this.room().trim(), this.pass());
+  }
+
+  saveSignaling(): void {
+    const v = this.signaling().trim();
+    if (v) this.config.set('signalingUrl', v);
+    else this.config.delete('signalingUrl');
+    this.flash(v ? 'Signaling server saved — reconnect to apply.' : 'Reverted to default signaling.');
   }
 
   exportState(): void {

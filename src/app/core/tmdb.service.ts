@@ -21,6 +21,24 @@ export interface TmdbShow {
   networks: string[];
 }
 
+export interface TmdbMovie {
+  id: number;
+  title: string;
+  tagline: string | null;
+  overview: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  releaseDate: string | null;
+  runtime: number | null;
+  status: string | null;
+  voteAverage: number | null;
+  genres: string[];
+  directors: string[];
+  cast: { name: string; character: string; profilePath: string | null }[];
+  homepage: string | null;
+  imdbId: string | null;
+}
+
 export interface TmdbEpisode {
   seasonNumber: number;
   episodeNumber: number;
@@ -52,6 +70,7 @@ export class TmdbService {
   /** Reactive: flips on as soon as the device-local key is loaded or set. */
   readonly hasKey = computed(() => !!this.config.tmdbKey()?.trim());
   private tmdbIdByTvdb = new Map<string, number | null>();
+  private tmdbIdByImdb = new Map<string, number | null>();
 
   apiKey(): string | undefined {
     return this.config.tmdbKey()?.trim() || undefined;
@@ -64,6 +83,9 @@ export class TmdbService {
     return path ? `${IMG}/${size}${path}` : null;
   }
   still(path: string | null, size: 'w300' | 'original' = 'w300'): string | null {
+    return path ? `${IMG}/${size}${path}` : null;
+  }
+  profileImg(path: string | null, size: 'w185' | 'original' = 'w185'): string | null {
     return path ? `${IMG}/${size}${path}` : null;
   }
 
@@ -83,6 +105,15 @@ export class TmdbService {
   async findMovieByImdb(imdbId: string): Promise<any | null> {
     const data = await this.get(`/find/${imdbId}?external_source=imdb_id`);
     return data?.movie_results?.[0] ?? null;
+  }
+
+  /** Resolve an IMDb id to a TMDB movie id (cached in-memory + Cache API). */
+  async tmdbIdForImdb(imdbId: string): Promise<number | null> {
+    if (this.tmdbIdByImdb.has(imdbId)) return this.tmdbIdByImdb.get(imdbId)!;
+    const m = await this.findMovieByImdb(imdbId);
+    const id = m?.id ?? null;
+    this.tmdbIdByImdb.set(imdbId, id);
+    return id;
   }
 
   // -------------------------------------------------------------------------
@@ -144,6 +175,42 @@ export class TmdbService {
   }
 
   // -------------------------------------------------------------------------
+  // Movie detail
+  // -------------------------------------------------------------------------
+  async movieByImdb(imdbId: string): Promise<TmdbMovie | null> {
+    const id = await this.tmdbIdForImdb(imdbId);
+    if (id == null) return null;
+    return this.movie(id);
+  }
+
+  async movie(tmdbId: number): Promise<TmdbMovie | null> {
+    const d = await this.get(`/movie/${tmdbId}?append_to_response=credits`);
+    if (!d) return null;
+    const crew = d.credits?.crew ?? [];
+    return {
+      id: d.id,
+      title: d.title,
+      tagline: d.tagline || null,
+      overview: d.overview,
+      posterPath: d.poster_path,
+      backdropPath: d.backdrop_path,
+      releaseDate: d.release_date || null,
+      runtime: d.runtime ?? null,
+      status: d.status || null,
+      voteAverage: d.vote_average ?? null,
+      genres: (d.genres ?? []).map((g: any) => g.name),
+      directors: crew.filter((c: any) => c.job === 'Director').map((c: any) => c.name),
+      cast: (d.credits?.cast ?? []).slice(0, 12).map((c: any) => ({
+        name: c.name,
+        character: c.character,
+        profilePath: c.profile_path,
+      })),
+      homepage: d.homepage || null,
+      imdbId: d.imdb_id || null,
+    };
+  }
+
+  // -------------------------------------------------------------------------
   // Cache-first fetch
   // -------------------------------------------------------------------------
   private async get(path: string): Promise<any | null> {
@@ -176,5 +243,6 @@ export class TmdbService {
   async clearCache(): Promise<void> {
     await caches.delete(CACHE);
     this.tmdbIdByTvdb.clear();
+    this.tmdbIdByImdb.clear();
   }
 }
