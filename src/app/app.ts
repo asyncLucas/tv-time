@@ -10,9 +10,11 @@ import {
   Settings,
   Download,
   X,
+  Share,
 } from 'lucide-angular';
 import { LibraryStore } from './core/library.store';
 import { SyncService } from './core/sync.service';
+import { GistSyncService } from './core/gist-sync.service';
 import { PwaService } from './core/pwa.service';
 import { LocalConfigService } from './core/local-config.service';
 
@@ -26,6 +28,7 @@ export class App {
   private store = inject(LibraryStore);
   private config = inject(LocalConfigService);
   protected sync = inject(SyncService);
+  protected gist = inject(GistSyncService);
   protected pwa = inject(PwaService);
   protected readonly ready = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -33,6 +36,7 @@ export class App {
   // lucide icon refs exposed to the template for the install button + banner
   protected readonly DownloadIcon = Download;
   protected readonly XIcon = X;
+  protected readonly ShareIcon = Share;
 
   protected readonly nav = [
     { path: '', label: 'Up Next', icon: Play, exact: true },
@@ -48,7 +52,8 @@ export class App {
     Promise.all([this.store.init(), this.config.init()])
       .then(() => {
         this.ready.set(true);
-        this.sync.autoStart(); // reconnects if device-local sync config exists
+        this.sync.autoStart(); // WebRTC P2P, if configured
+        this.gist.autoStart(); // GitHub Gist cloud sync, if configured
       })
       .catch((e) => this.error.set(String(e?.message ?? e)));
   }

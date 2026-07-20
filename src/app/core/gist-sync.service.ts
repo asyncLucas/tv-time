@@ -1,0 +1,235 @@
+import { Injectable, computed, inject, signal } from '@angular/core';
+import * as Y from 'yjs';
+import { DocService } from './doc.service';
+import { LocalConfigService } from './local-config.service';
+
+export type GistStatus = 'off' | 'syncing' | 'synced' | 'error';
+
+const API = 'https://api.github.com';
+const FILENAME = 'tvtime-revival-state.json';
+const MARKER = 'tv-time-revival · sync state (do not delete)';
+/** Tags CRDT updates that came FROM the gist, so we don't echo them back. */
+const GIST_ORIGIN = 'gist-sync';
+const POLL_MS = 45_000;
+const PUSH_DEBOUNCE_MS = 2_500;
+
+/**
+ * Truly-serverless sync through a private GitHub Gist the user owns.
+ *
+ * There is no backend to run: the app talks straight to the GitHub API from the
+ * browser (CORS-enabled) using a device-local `gist`-scoped token. The gist
+ * holds the whole Yjs state as one base64 blob; because that state is a CRDT,
+ * every device does pull → merge → push and they all converge — last-writer
+ * conflicts are impossible at the data level.
+ *
+ * The token lives only in this device's IndexedDB (LocalConfigService) and never
+ * enters the synced document. Devices discover the same gist from the token
+ * alone (searched by a description marker), so setup is just "paste token".
+ */
+@Injectable({ providedIn: 'root' })
+export class GistSyncService {
+  private docs = inject(DocService);
+  private config = inject(LocalConfigService);
+
+  readonly status = signal<GistStatus>('off');
+  readonly lastSync = signal<string | null>(null);
+  readonly error = signal<string | null>(null);
+  readonly enabled = computed(() => this.status() !== 'off');
+
+  private pushTimer?: ReturnType<typeof setTimeout>;
+  private pollTimer?: ReturnType<typeof setInterval>;
+  private busy = false;
+  private wired = false;
+
+  private token(): string | undefined {
+    return this.config.get<string>('gistToken')?.trim() || undefined;
+  }
+  private gistId(): string | undefined {
+    return this.config.get<string>('gistId');
+  }
+
+  /** Reconnect on launch if a token was saved on this device. */
+  autoStart(): void {
+    if (this.token()) this.start();
+  }
+
+  /** Enable sync with a fresh token: store it, find/create the gist, sync, wire. */
+  async connect(token: string): Promise<void> {
+    await this.config.set('gistToken', token.trim());
+    await this.start(true);
+  }
+
+  private async start(justConnected = false): Promise<void> {
+    this.status.set('syncing');
+    this.error.set(null);
+    try {
+      await this.ensureGist();
+      await this.sync();
+      this.wire();
+      if (justConnected) await this.push(); // seed the gist with local state
+    } catch (e: any) {
+      this.fail(e);
+    }
+  }
+
+  /** Manual "Sync now": pull remote, merge, push merged back. */
+  async sync(): Promise<void> {
+    if (this.busy || !this.token()) return;
+    this.busy = true;
+    this.status.set('syncing');
+    try {
+      await this.pull();
+      await this.push();
+      this.status.set('synced');
+      this.lastSync.set(new Date().toISOString());
+      this.error.set(null);
+    } catch (e: any) {
+      this.fail(e);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  disconnect(): void {
+    this.teardown();
+    this.status.set('off');
+    this.lastSync.set(null);
+  }
+
+  /** Fully forget: stop syncing and drop the token + gist id from this device. */
+  forget(): void {
+    this.disconnect();
+    this.config.delete('gistToken');
+    this.config.delete('gistId');
+  }
+
+  // -------------------------------------------------------------------------
+  // Gist plumbing
+  // -------------------------------------------------------------------------
+  private async ensureGist(): Promise<void> {
+    if (this.gistId()) return;
+    // discover an existing state gist by its marker, else create one
+    const list = await this.api('GET', '/gists?per_page=100');
+    const found = (list as any[]).find(
+      (g) => g.description === MARKER || (g.files && g.files[FILENAME]),
+    );
+    if (found) {
+      await this.config.set('gistId', found.id);
+      return;
+    }
+    const created = await this.api('POST', '/gists', {
+      description: MARKER,
+      public: false,
+      files: { [FILENAME]: { content: this.pack() } },
+    });
+    await this.config.set('gistId', (created as any).id);
+  }
+
+  private async pull(): Promise<void> {
+    const id = this.gistId();
+    if (!id) return;
+    const gist = await this.api('GET', `/gists/${id}`);
+    const file = (gist as any).files?.[FILENAME];
+    if (!file) return;
+    // large gists get truncated inline; fall back to raw_url
+    const content = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
+    if (!content) return;
+    let update: Uint8Array | null = null;
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed?.update) update = b64ToBytes(parsed.update);
+    } catch {
+      return; // malformed remote file — ignore rather than corrupt local state
+    }
+    if (update) Y.applyUpdate(this.docs.doc, update, GIST_ORIGIN);
+  }
+
+  private async push(): Promise<void> {
+    const id = this.gistId();
+    if (!id) return;
+    await this.api('PATCH', `/gists/${id}`, { files: { [FILENAME]: { content: this.pack() } } });
+  }
+
+  /** Serialize the full CRDT state into the gist file payload. */
+  private pack(): string {
+    const update = Y.encodeStateAsUpdate(this.docs.doc);
+    return JSON.stringify({
+      app: 'tv-time-revival',
+      schema: 1,
+      updatedAt: new Date().toISOString(),
+      update: bytesToB64(update),
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Live wiring: push local edits (debounced), poll for remote edits
+  // -------------------------------------------------------------------------
+  private wire(): void {
+    if (this.wired) return;
+    this.wired = true;
+    this.docs.doc.on('update', this.onDocUpdate);
+    this.pollTimer = setInterval(() => this.pull().catch(() => {}), POLL_MS);
+  }
+
+  private onDocUpdate = (_u: Uint8Array, origin: unknown): void => {
+    if (origin === GIST_ORIGIN) return; // remote change — don't echo it back
+    clearTimeout(this.pushTimer);
+    this.pushTimer = setTimeout(() => {
+      this.push()
+        .then(() => {
+          this.status.set('synced');
+          this.lastSync.set(new Date().toISOString());
+        })
+        .catch((e) => this.fail(e));
+    }, PUSH_DEBOUNCE_MS);
+  };
+
+  private teardown(): void {
+    if (this.wired) this.docs.doc.off('update', this.onDocUpdate);
+    this.wired = false;
+    clearTimeout(this.pushTimer);
+    if (this.pollTimer) clearInterval(this.pollTimer);
+  }
+
+  // -------------------------------------------------------------------------
+  private async api(method: string, path: string, body?: unknown): Promise<unknown> {
+    const res = await fetch(`${API}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.token()}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) {
+      if (res.status === 401) throw new Error('Invalid or expired token');
+      if (res.status === 403) throw new Error('Token lacks the "gist" scope, or rate-limited');
+      if (res.status === 404) throw new Error('Gist not found (was it deleted?)');
+      throw new Error(`GitHub API ${res.status}`);
+    }
+    return res.status === 204 ? null : res.json();
+  }
+
+  private fail(e: any): void {
+    this.error.set(String(e?.message ?? e));
+    this.status.set('error');
+  }
+}
+
+// --- base64 <-> bytes (binary-safe, no data: URI overhead) ---
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}

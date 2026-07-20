@@ -1,4 +1,5 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { Poster } from '../../shared/poster';
 import type { MovieView } from '../../core/models';
@@ -7,7 +8,7 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
 
 @Component({
   selector: 'app-movies',
-  imports: [Poster],
+  imports: [Poster, RouterLink],
   template: `
     <div class="page">
       <div class="page-head">
@@ -31,7 +32,7 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
           @for (m of filtered(); track m.uuid) {
             <div class="card">
               <div class="pw">
-                <app-poster [title]="m.name" [imdbId]="m.imdbId" />
+                <a [routerLink]="['/movies', m.uuid]"><app-poster [title]="m.name" [imdbId]="m.imdbId" /></a>
                 <div class="actions">
                   <button
                     class="act"
@@ -51,7 +52,7 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
                   </button>
                 </div>
               </div>
-              <div class="name">{{ m.name }}</div>
+              <a class="name" [routerLink]="['/movies', m.uuid]">{{ m.name }}</a>
               <div class="yr">{{ year(m) }}</div>
             </div>
           }

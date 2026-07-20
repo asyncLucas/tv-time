@@ -81,8 +81,18 @@ Settings → paste a free [TMDB API key](https://www.themoviedb.org/settings/api
 without one, shows display recovered TheTVDB artwork.
 
 ### Sync across your devices
-Settings → Decentralized sync → pick a room name + passphrase, open the same pair on
-another device. Offline edits merge automatically on reconnect.
+Two options, both keeping your data yours:
+
+- **Cloud sync · GitHub Gist (recommended, no backend):** Settings → paste a GitHub token
+  scoped to `gist` only. The app stores the whole CRDT state in a private gist you own and
+  pull-merges-pushes it on every device. Truly serverless, works across any network. The
+  token stays in this device's IndexedDB and never enters the synced data.
+- **Peer-to-peer (WebRTC):** Settings → pick a room name + passphrase; open the same pair on
+  another device for real-time P2P. Needs a reachable signaling server (a rendezvous point —
+  configurable; the default public one can go down).
+
+Either way, CRDT merges are conflict-free and offline edits reconcile on reconnect. A JSON
+**export/import** is the always-works floor beneath both.
 
 ## Build & deploy (static — host anywhere)
 

@@ -1,4 +1,4 @@
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, computed, inject, signal } from '@angular/core';
 import { SwUpdate, VersionReadyEvent } from '@angular/service-worker';
 import { filter } from 'rxjs/operators';
 
@@ -35,7 +35,24 @@ export class PwaService {
   /** Per-device dismissal of the mobile install banner (persisted, not synced). */
   readonly bannerDismissed = signal(localStorage.getItem(PwaService.DISMISS_KEY) === '1');
 
+  /**
+   * iOS never fires `beforeinstallprompt` and exposes no programmatic install —
+   * Add to Home Screen lives behind the Share sheet. So there is nothing to
+   * capture and `canInstall` stays false forever; we detect the platform instead
+   * and show instructions rather than a button.
+   */
+  readonly isIos = signal(false);
+
+  /** Show the iOS "Add to Home Screen" hint instead of an install button. */
+  readonly iosInstallHint = computed(() => this.isIos() && !this.installed());
+
+  /** Anything to offer? (a replayable prompt, or the iOS manual route) */
+  readonly showInstallBanner = computed(
+    () => (this.canInstall() || this.iosInstallHint()) && !this.bannerDismissed(),
+  );
+
   init(): void {
+    this.isIos.set(PwaService.detectIos());
     // already installed? (standalone display mode)
     const standalone =
       window.matchMedia?.('(display-mode: standalone)').matches ||
@@ -62,6 +79,15 @@ export class PwaService {
       // proactively poll for a new deploy every 30 min
       setInterval(() => this.swUpdate!.checkForUpdate().catch(() => {}), 30 * 60 * 1000);
     }
+  }
+
+  /** iPhone/iPod, plus iPadOS — which reports itself as a touch-capable Mac. */
+  private static detectIos(): boolean {
+    const ua = navigator.userAgent;
+    return (
+      /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+    );
   }
 
   /** Dismiss the mobile install banner for good (on this device). */

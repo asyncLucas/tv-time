@@ -2,6 +2,7 @@ import { Component, inject, signal } from '@angular/core';
 import { LibraryStore } from '../../core/library.store';
 import { TmdbService } from '../../core/tmdb.service';
 import { SyncService } from '../../core/sync.service';
+import { GistSyncService } from '../../core/gist-sync.service';
 import { DocService, DB_NAME } from '../../core/doc.service';
 import { LocalConfigService } from '../../core/local-config.service';
 
@@ -34,12 +35,63 @@ import { LocalConfigService } from '../../core/local-config.service';
         </div>
       </section>
 
+      <!-- Cloud sync via GitHub Gist -->
+      <section class="card">
+        <h2>Cloud sync · GitHub Gist</h2>
+        <p class="hint">
+          Serverless sync across all your devices through a private gist you own — no backend, works on
+          any network. Paste a GitHub token with only the <code>gist</code> scope; it's stored on this
+          device and never leaves it.
+          <a [href]="gistTokenUrl" target="_blank" rel="noopener">Create a token →</a>
+        </p>
+        @if (gist.enabled()) {
+          <div class="synced">
+            <div>
+              <strong>Connected</strong>
+              <div
+                class="sync-state"
+                [class.s-connected]="gist.status() === 'synced'"
+                [class.s-connecting]="gist.status() === 'syncing'"
+                [class.s-error]="gist.status() === 'error'"
+              >
+                <span class="dot"></span>
+                @switch (gist.status()) {
+                  @case ('synced') { Synced{{ gistLastSync() ? ' · ' + gistLastSync() : '' }} }
+                  @case ('syncing') { Syncing… }
+                  @case ('error') { Sync error }
+                  @default { Idle }
+                }
+              </div>
+            </div>
+            <div style="display:flex; gap:8px">
+              <button class="btn" (click)="gist.sync()">Sync now</button>
+              <button class="btn" (click)="gist.forget()">Disconnect</button>
+            </div>
+          </div>
+          @if (gist.error()) { <p class="hint err-hint">{{ gist.error() }}</p> }
+        } @else {
+          <div class="row">
+            <input
+              class="in"
+              type="password"
+              placeholder="GitHub token (gist scope)"
+              [value]="gistToken()"
+              (input)="gistToken.set($any($event.target).value)"
+            />
+            <button class="btn primary" [disabled]="!gistToken()" (click)="connectGist()">Connect</button>
+          </div>
+          @if (gist.status() === 'error' && gist.error()) {
+            <p class="hint err-hint">{{ gist.error() }}</p>
+          }
+        }
+      </section>
+
       <!-- Sync -->
       <section class="card">
-        <h2>Decentralized sync</h2>
+        <h2>Peer-to-peer sync <span class="tag">advanced</span></h2>
         <p class="hint">
-          Peer-to-peer sync across your own devices. Pick a room name and a passphrase; open the same
-          pair on another device to converge. End-to-end encrypted — no server stores your data.
+          Real-time WebRTC sync directly between your devices. Pick a room name and a passphrase; open the
+          same pair on another device to converge. End-to-end encrypted — no server stores your data.
         </p>
         @if (sync.room()) {
           <div class="synced">
@@ -140,6 +192,18 @@ import { LocalConfigService } from '../../core/local-config.service';
       h2 {
         font-size: 16px;
         margin: 0 0 8px;
+      }
+      .tag {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-faint);
+        background: var(--bg-elev-2);
+        padding: 2px 7px;
+        border-radius: 999px;
+        margin-left: 6px;
+        font-weight: 700;
+        vertical-align: middle;
       }
       .hint {
         color: var(--text-dim);
@@ -316,6 +380,7 @@ export class Settings {
   sync = inject(SyncService);
   private docs = inject(DocService);
 
+  gist = inject(GistSyncService);
   private config = inject(LocalConfigService);
 
   key = signal(this.tmdb.apiKey() ?? '');
@@ -323,7 +388,9 @@ export class Settings {
   pass = signal('');
   msg = signal('');
   signaling = signal(this.config.get<string>('signalingUrl') ?? '');
+  gistToken = signal('');
   readonly defaultSignaling = 'wss://y-webrtc-eu.fly.dev';
+  readonly gistTokenUrl = 'https://github.com/settings/tokens/new?scopes=gist&description=TV+Time+Revival';
 
   /** Human-readable shape of a valid import file (annotated). */
   readonly importFormat = `{
@@ -367,6 +434,17 @@ export class Settings {
 
   connect(): void {
     this.sync.connect(this.room().trim(), this.pass());
+  }
+
+  connectGist(): void {
+    const t = this.gistToken().trim();
+    if (t) this.gist.connect(t);
+    this.gistToken.set('');
+  }
+
+  gistLastSync(): string {
+    const t = this.gist.lastSync();
+    return t ? new Date(t).toLocaleTimeString() : '';
   }
 
   saveSignaling(): void {

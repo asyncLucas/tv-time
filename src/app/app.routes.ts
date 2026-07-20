@@ -22,6 +22,11 @@ export const routes: Routes = [
     title: 'Movies · TV Time',
   },
   {
+    path: 'movies/:uuid',
+    loadComponent: () => import('./features/movie-detail/movie-detail').then((m) => m.MovieDetail),
+    title: 'Movie · TV Time',
+  },
+  {
     path: 'lists',
     loadComponent: () => import('./features/lists/lists').then((m) => m.Lists),
     title: 'Lists · TV Time',
