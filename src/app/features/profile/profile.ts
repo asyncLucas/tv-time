@@ -1,11 +1,13 @@
 import { Component, computed, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { formatDuration } from '../../shared/duration';
+import { Poster } from '../../shared/poster';
 import { YearPipe } from '../../shared/year';
 
 @Component({
   selector: 'app-profile',
-  imports: [YearPipe],
+  imports: [YearPipe, RouterLink, Poster],
   template: `
     <div class="page">
       @if (store.profile(); as p) {
@@ -77,6 +79,31 @@ import { YearPipe } from '../../shared/year';
             <div class="l">favorite shows</div>
           </div>
         </div>
+
+        @if (favShows().length) {
+          <h2>Favorite shows</h2>
+          <div class="rail">
+            @for (s of favShows(); track s.uuid) {
+              <a class="fav" [routerLink]="['/shows', s.uuid]">
+                <app-poster [title]="s.name" [tvdbId]="s.tvdbId" [cachedPoster]="s.cachedPoster ?? null" />
+                <div class="fav-name">{{ s.name }}</div>
+              </a>
+            }
+          </div>
+        }
+
+        @if (favMovies().length) {
+          <h2>Favorite movies</h2>
+          <div class="rail">
+            @for (m of favMovies(); track m.uuid) {
+              <a class="fav" [routerLink]="['/movies', m.uuid]">
+                <app-poster [title]="m.name" [imdbId]="m.imdbId" [cachedPoster]="m.cachedPoster ?? null" />
+                <div class="fav-name">{{ m.name }}</div>
+                <div class="fav-yr">{{ m.firstReleaseDate | year }}</div>
+              </a>
+            }
+          </div>
+        }
 
         <h2>Top genres</h2>
         <div class="genres">
@@ -225,6 +252,47 @@ import { YearPipe } from '../../shared/year';
         font-size: 18px;
         margin: 0 0 16px;
       }
+      .rail + h2 {
+        margin-top: 36px;
+      }
+      /* One-line, swipeable on touch; the scrollbar is hidden because the
+         posters running off the edge already read as "there's more". */
+      .rail {
+        display: flex;
+        gap: 14px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x proximity;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        /* let the cards breathe against the page edge on phones */
+        padding-bottom: 4px;
+      }
+      .rail::-webkit-scrollbar {
+        display: none;
+      }
+      .fav {
+        flex: 0 0 132px;
+        width: 132px;
+        scroll-snap-align: start;
+        text-decoration: none;
+        color: inherit;
+      }
+      .fav-name {
+        font-size: 13px;
+        font-weight: 600;
+        margin-top: 8px;
+        /* keep every card the same height regardless of title length */
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+      .fav-yr {
+        color: var(--text-faint);
+        font-size: 12px;
+        margin-top: 2px;
+      }
       .genres {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -325,6 +393,9 @@ export class Profile {
   // Compact ("3y 4mo"), not the long prose form: this tile renders at 40px, and
   // "3 years, 4 months, 12 days" wraps to three lines at any realistic total.
   lifetime = computed(() => formatDuration(this.store.stats().lifetimeMinutes));
+
+  readonly favShows = computed(() => this.store.shows().filter((s) => s.state.favorite));
+  readonly favMovies = computed(() => this.store.movies().filter((m) => m.state.favorite));
 
   topGenres = computed(() => {
     const counts: Record<string, number> = {};
