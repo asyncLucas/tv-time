@@ -6,6 +6,16 @@ import { LocalConfigService } from './local-config.service';
 export type SyncStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
 /**
+ * Default signaling server. The old y-webrtc defaults (signaling.yjs.dev, the
+ * Heroku hosts) are dead, so we ship a currently-live community server and let
+ * the user override it in Settings.
+ */
+export const DEFAULT_SIGNALING_URL = 'wss://y-webrtc-eu.fly.dev';
+
+/** How long to wait for the signaling server before calling the room unreachable. */
+const SIGNALING_TIMEOUT_MS = 12_000;
+
+/**
  * Decentralized sync for a single user's own device fleet.
  *
  * Transport: y-webrtc — devices find each other through a signaling server (a
@@ -35,17 +45,10 @@ export class SyncService {
   readonly room = signal<string | null>(null);
   readonly connected = computed(() => this.status() === 'connected' || this.peers() > 0);
 
-  /**
-   * Default signaling servers. Only reachable ones matter — y-webrtc tries all.
-   * The old y-webrtc defaults (signaling.yjs.dev, the Heroku hosts) are dead, so
-   * we ship a currently-live community server and let the user override it.
-   */
-  private readonly defaultSignaling = ['wss://y-webrtc-eu.fly.dev'];
-
-  /** The signaling server currently in use (custom override or default). */
+  /** The signaling server currently in use (custom override, else the default). */
   signalingUrls(): string[] {
     const custom = this.config.get<string>('signalingUrl')?.trim();
-    return custom ? [custom] : this.defaultSignaling;
+    return [custom || DEFAULT_SIGNALING_URL];
   }
 
   /** If the user previously enabled sync, reconnect on launch (device-local). */
@@ -63,10 +66,12 @@ export class SyncService {
 
     // If the signaling server never comes online, surface an error rather than
     // spinning forever. (Being online with 0 peers is fine — you're the first
-    // device, waiting for another to join; that stays 'connecting'.)
-    const failTimer = setTimeout(() => {
+    // device, waiting for another to join; that stays 'connecting'.) The timer
+    // is tracked on the instance so disconnect() can cancel it — otherwise it
+    // would fire later and flip an already-idle service into 'error'.
+    this.failTimer = setTimeout(() => {
       if (!signalingOnline && this.peers() === 0) this.status.set('error');
-    }, 12000);
+    }, SIGNALING_TIMEOUT_MS);
 
     try {
       this.provider = new WebrtcProvider(`tvtime-${room}`, this.docs.doc, {
@@ -74,14 +79,17 @@ export class SyncService {
         password,
       });
     } catch {
-      clearTimeout(failTimer);
+      this.clearFailTimer();
       this.status.set('error');
       return;
     }
 
     // signaling reachability (the part that was broken with the dead servers)
     this.provider.on('status', ({ connected }: { connected: boolean }) => {
-      if (connected) signalingOnline = true;
+      if (connected) {
+        signalingOnline = true;
+        this.clearFailTimer();
+      }
     });
 
     // real peer set: WebRTC peers (cross-device) + BroadcastChannel peers (same browser)
@@ -97,11 +105,17 @@ export class SyncService {
   }
 
   disconnect(): void {
+    this.clearFailTimer();
     this.provider?.destroy();
     this.provider = undefined;
     this.status.set('idle');
     this.peers.set(0);
     this.room.set(null);
+  }
+
+  private clearFailTimer(): void {
+    clearTimeout(this.failTimer);
+    this.failTimer = undefined;
   }
 
   forget(): void {

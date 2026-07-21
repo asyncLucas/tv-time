@@ -1,9 +1,6 @@
 import { Injectable, computed, inject } from '@angular/core';
 import { LocalConfigService } from './local-config.service';
 
-export interface TmdbImages {
-  poster: (path: string | null, size?: PosterSize) => string | null;
-}
 export type PosterSize = 'w185' | 'w342' | 'w500' | 'original';
 
 export interface TmdbShow {
@@ -80,9 +77,6 @@ export class TmdbService {
   }
 
   poster(path: string | null, size: PosterSize = 'w342'): string | null {
-    return path ? `${IMG}/${size}${path}` : null;
-  }
-  still(path: string | null, size: 'w300' | 'original' = 'w300'): string | null {
     return path ? `${IMG}/${size}${path}` : null;
   }
   profileImg(path: string | null, size: 'w185' | 'original' = 'w185'): string | null {
@@ -217,8 +211,13 @@ export class TmdbService {
     const key = this.apiKey();
     if (!key) return null;
     const sep = path.includes('?') ? '&' : '?';
-    const url = `${BASE}${path}${sep}api_key=${key}&language=en-US`;
-    const cacheUrl = url.replace(key, 'KEY'); // don't key the cache on the secret
+    // Build both URLs from the same base, differing only in the api_key value,
+    // so the secret is never part of the cache key. (Deriving the cache URL by
+    // string-replacing the key into the real URL would leak it the moment the
+    // key contained a regex- or URL-significant character.)
+    const base = `${BASE}${path}${sep}language=en-US&api_key=`;
+    const url = base + encodeURIComponent(key);
+    const cacheUrl = base + 'KEY';
 
     try {
       const cache = await caches.open(CACHE);

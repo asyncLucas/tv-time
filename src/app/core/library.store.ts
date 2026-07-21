@@ -31,7 +31,6 @@ export class LibraryStore {
   private movieStateSig = signal<Record<string, MovieState>>({});
   private episodeWatchesSig = signal<Record<string, EpisodeWatch>>({});
   private listsSig = signal<Record<string, any>>({});
-  private settingsSig = signal<Record<string, any>>({});
   private profileSig = signal<Record<string, any>>({});
 
   private started = false;
@@ -51,7 +50,6 @@ export class LibraryStore {
     this.bind(this.docs.movieState, this.movieStateSig);
     this.bind(this.docs.episodeWatches, this.episodeWatchesSig);
     this.bind(this.docs.lists, this.listsSig);
-    this.bind(this.docs.settings, this.settingsSig);
     this.bind(this.docs.profile, this.profileSig);
   }
 
@@ -126,10 +124,7 @@ export class LibraryStore {
     }));
   });
 
-  readonly favoriteShows = computed(() => this.shows().filter((s) => s.state.favorite));
   readonly watchingShows = computed(() => this.shows().filter((s) => s.state.status === 'watching'));
-  readonly watchlistMovies = computed(() => this.movies().filter((m) => m.state.watchlist && !m.state.watched));
-  readonly watchedMovies = computed(() => this.movies().filter((m) => m.state.watched));
 
   readonly lists = computed(() => {
     const raw = this.listsSig();
@@ -180,10 +175,12 @@ export class LibraryStore {
     const seed = this.seedSvc.seed()?.profile ?? null;
     const edits = this.profileSig();
     if (!seed && !Object.keys(edits).length) return null;
+    const name = typeof edits['name'] === 'string' ? edits['name'] : undefined;
+    const image = safeImageSrc(edits['image']);
     return {
       ...(seed ?? EMPTY_PROFILE),
-      ...(edits['name'] !== undefined ? { name: edits['name'] } : {}),
-      ...(edits['image'] !== undefined ? { image: edits['image'] } : {}),
+      ...(name !== undefined ? { name } : {}),
+      ...(image !== undefined ? { image } : {}),
     };
   });
 
@@ -316,14 +313,6 @@ export class LibraryStore {
     });
   }
 
-  // --- settings passthrough ---
-  getSetting<T = any>(key: string): T | undefined {
-    return this.settingsSig()[key];
-  }
-  setSetting(key: string, value: any): void {
-    this.docs.settings.set(key, value);
-  }
-
   // -------------------------------------------------------------------------
   private now(): string {
     return new Date().toISOString();
@@ -339,6 +328,21 @@ export class LibraryStore {
 
 /** Avatars are stored square at this edge length — small enough to sync cheaply. */
 const AVATAR_PX = 256;
+
+/**
+ * Narrow an avatar coming out of the CRDT to something safe to put in `[src]`.
+ *
+ * The value arrives from a synced peer or an imported file, so it is untrusted.
+ * We only ever *write* `data:image/...` here (see setProfileImage), and that is
+ * the only form we accept back — which rules out `javascript:` and friends
+ * without leaning on the template sanitizer as the sole line of defence.
+ * `null` clears the avatar; `undefined` means "no edit, fall back to the seed".
+ */
+function safeImageSrc(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return typeof value === 'string' && value.startsWith('data:image/') ? value : null;
+}
 
 /** Stand-in when the device has no seed but the user has edited their profile. */
 const EMPTY_PROFILE = {

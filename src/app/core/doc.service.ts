@@ -1,13 +1,7 @@
 import { Injectable } from '@angular/core';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import type {
-  Seed,
-  ShowState,
-  MovieState,
-  EpisodeWatch,
-  AddedShowRef,
-} from './models';
+import type { Seed, ShowState, MovieState, EpisodeWatch } from './models';
 
 export const DB_NAME = 'tvtime-revival';
 
@@ -31,12 +25,8 @@ export class DocService {
   readonly movieState = this.doc.getMap<MovieState>('movieState');
   /** `${tvdbId}:${season}:${ep}` -> EpisodeWatch */
   readonly episodeWatches = this.doc.getMap<EpisodeWatch>('episodeWatches');
-  /** uuid -> AddedShowRef (shows the user added that weren't in the seed) */
-  readonly addedShows = this.doc.getMap<AddedShowRef>('addedShows');
   /** listId -> { name, description, items } */
   readonly lists = this.doc.getMap<any>('lists');
-  /** app settings (tmdb api key, sync room, etc.) */
-  readonly settings = this.doc.getMap<any>('settings');
   /**
    * User-editable profile (name, avatar). Lives in the CRDT — not the seed —
    * so edits travel between devices. The avatar is a small downscaled data URI
@@ -127,19 +117,23 @@ export class DocService {
     });
   }
 
-  /** Serialize the whole user-state doc to a portable JSON blob (export/backup). */
+  /**
+   * Serialize the whole user-state doc to a portable JSON blob (export/backup).
+   *
+   * Device-local config (TMDB key, sync room + passphrase, gist token) lives in
+   * LocalConfigService and is deliberately absent here — a backup file is
+   * something people email themselves, so it must never carry credentials.
+   */
   exportJson(): string {
     return JSON.stringify(
       {
-        kind: 'tvtime-revival-state',
+        kind: STATE_FILE_KIND,
         schema: this.meta.get('schema') ?? 1,
         exportedAt: new Date().toISOString(),
         showState: this.showState.toJSON(),
         movieState: this.movieState.toJSON(),
         episodeWatches: this.episodeWatches.toJSON(),
-        addedShows: this.addedShows.toJSON(),
         lists: this.lists.toJSON(),
-        settings: this.settings.toJSON(),
         profile: this.profile.toJSON(),
       },
       null,
@@ -147,23 +141,54 @@ export class DocService {
     );
   }
 
-  /** Merge an exported blob back in (used by import + as a manual sync path). */
+  /**
+   * Merge an exported blob back in (used by import + as a manual sync path).
+   *
+   * An import file is untrusted input — it may have been hand-edited or come
+   * from someone else — so each section is shape-checked before it reaches the
+   * CRDT. Anything that isn't a plain `{ key: object }` map is skipped rather
+   * than merged, which keeps a malformed file from poisoning the doc that then
+   * replicates to every other device.
+   */
   importJson(json: string): void {
     const data = JSON.parse(json);
-    if (data?.kind !== 'tvtime-revival-state') {
+    if (data?.kind !== STATE_FILE_KIND) {
       throw new Error('Not a TV Time Revival state file');
     }
     this.doc.transact(() => {
-      const apply = (map: Y.Map<any>, obj: Record<string, any>) => {
-        for (const [k, v] of Object.entries(obj ?? {})) map.set(k, v);
-      };
-      apply(this.showState, data.showState);
-      apply(this.movieState, data.movieState);
-      apply(this.episodeWatches, data.episodeWatches);
-      apply(this.addedShows, data.addedShows);
-      apply(this.lists, data.lists);
-      apply(this.settings, data.settings);
-      apply(this.profile, data.profile);
+      mergeEntries(this.showState, data.showState);
+      mergeEntries(this.movieState, data.movieState);
+      mergeEntries(this.episodeWatches, data.episodeWatches);
+      mergeEntries(this.lists, data.lists);
+      mergeEntries(this.profile, data.profile, { allowScalars: true });
     });
+  }
+}
+
+/** Discriminator every state file must carry for import to accept it. */
+const STATE_FILE_KIND = 'tvtime-revival-state';
+
+/** A JSON object literal — not an array, not null, not a boxed primitive. */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/**
+ * Copy `source`'s entries into a Y.Map, skipping anything malformed.
+ *
+ * Most sections map an id to a record, so non-object values are rejected. The
+ * profile is the exception — it stores scalars (`name`, `image`) directly — and
+ * opts in via `allowScalars`.
+ */
+function mergeEntries(
+  target: Y.Map<any>,
+  source: unknown,
+  { allowScalars = false } = {},
+): void {
+  if (!isPlainObject(source)) return;
+  for (const [key, value] of Object.entries(source)) {
+    if (!key) continue;
+    if (!allowScalars && !isPlainObject(value)) continue;
+    target.set(key, value);
   }
 }

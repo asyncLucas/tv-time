@@ -1,5 +1,6 @@
 import {
   Component,
+  DestroyRef,
   ElementRef,
   computed,
   effect,
@@ -96,6 +97,9 @@ export class Poster {
       if (!this.resolved && this.cachedPoster()) this.src.set(this.cachedPoster());
     });
 
+    // Only resolve posters that actually scroll into view. Grids render hundreds
+    // of these, so the observer is also torn down on destroy — otherwise every
+    // card the user scrolls past keeps an observer alive for the whole session.
     const io = new IntersectionObserver((entries) => {
       if (entries.some((e) => e.isIntersecting)) {
         io.disconnect();
@@ -103,6 +107,7 @@ export class Poster {
       }
     });
     queueMicrotask(() => io.observe(this.el.nativeElement));
+    inject(DestroyRef).onDestroy(() => io.disconnect());
   }
 
   private async resolve(): Promise<void> {

@@ -50,7 +50,9 @@ import type { ShowStatus } from '../../core/models';
                 </div>
               </div>
 
-              @if (progress() > 0) {
+              @if (markingAll()) {
+                <div class="marking">Marking all episodes as watched…</div>
+              } @else if (progress() > 0) {
                 <div class="progress">
                   <div class="bar"><div class="fill" [style.width.%]="progress()"></div></div>
                   <span>{{ s.watchedEpisodeCount }} / {{ totalEpisodes() }} watched</span>
@@ -123,6 +125,7 @@ export class ShowDetail {
   readonly tmdb2 = signal<TmdbShow | null>(null);
   readonly episodes = signal<Record<number, TmdbEpisode[]>>({});
   readonly loadingSeasons = signal(false);
+  readonly markingAll = signal(false);
   private open = signal<Set<number>>(new Set());
 
   readonly posterUrl = computed(() => this.tmdb.poster(this.tmdb2()?.posterPath ?? null, 'w342'));
@@ -222,8 +225,31 @@ export class ShowDetail {
     this.store.markWatchedUpTo(tvdbId, ep.seasonNumber, ep.episodeNumber, payload);
   }
 
-  setStatus(v: string): void {
+  async setStatus(v: string): Promise<void> {
     this.store.setShowStatus(this.uuid(), v as ShowStatus);
+    // Completing a show marks its whole run watched.
+    if (v === 'completed') await this.markAllWatched();
+  }
+
+  /** Mark every episode of every season as watched (used when completing). */
+  private async markAllWatched(): Promise<void> {
+    const s = this.show();
+    const info = this.tmdb2();
+    if (!s?.tvdbId || !info?.seasons.length) return; // no episode data (e.g. no TMDB key)
+    this.markingAll.set(true);
+    try {
+      for (const season of info.seasons) await this.loadSeason(info.id, season.seasonNumber);
+      const payload = info.seasons.map((season) => ({
+        season: season.seasonNumber,
+        episodes: (this.episodes()[season.seasonNumber] ?? []).map((e) => e.episodeNumber),
+      }));
+      const last = info.seasons[info.seasons.length - 1];
+      const lastEps = this.episodes()[last.seasonNumber] ?? [];
+      const lastEp = lastEps.length ? Math.max(...lastEps.map((e) => e.episodeNumber)) : Number.MAX_SAFE_INTEGER;
+      this.store.markWatchedUpTo(s.tvdbId, last.seasonNumber, lastEp, payload);
+    } finally {
+      this.markingAll.set(false);
+    }
   }
   rate(n: number): void {
     const cur = this.show()?.state.rating;

@@ -24,7 +24,6 @@ export class SeedService {
   readonly hasLibrary = computed(() => !!this._seed());
 
   private showByUuid = new Map<string, SeedShow>();
-  private showByTvdb = new Map<string, SeedShow>();
   private movieByUuid = new Map<string, SeedMovie>();
 
   private db?: IDBDatabase;
@@ -106,9 +105,6 @@ export class SeedService {
   getShow(uuid: string): SeedShow | undefined {
     return this.showByUuid.get(uuid);
   }
-  getShowByTvdb(tvdbId: string): SeedShow | undefined {
-    return this.showByTvdb.get(tvdbId);
-  }
   getMovie(uuid: string): SeedMovie | undefined {
     return this.movieByUuid.get(uuid);
   }
@@ -116,12 +112,8 @@ export class SeedService {
   // -------------------------------------------------------------------------
   private apply(seed: Seed): void {
     this.showByUuid.clear();
-    this.showByTvdb.clear();
     this.movieByUuid.clear();
-    for (const s of seed.shows) {
-      this.showByUuid.set(s.uuid, s);
-      if (s.tvdbId) this.showByTvdb.set(s.tvdbId, s);
-    }
+    for (const s of seed.shows) this.showByUuid.set(s.uuid, s);
     for (const m of seed.movies) this.movieByUuid.set(m.uuid, m);
     this._seed.set(seed);
   }
