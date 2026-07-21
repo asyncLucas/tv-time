@@ -150,6 +150,22 @@ export class TmdbService {
     return this.search('movie', query);
   }
 
+  /**
+   * This week's trending films. Same shape as a search result, so the same cards
+   * render it. Only called when the caller actually asks — the Movies page holds
+   * off until its Trending tab is opened.
+   */
+  async trendingMovies(): Promise<TmdbSearchResult[]> {
+    const data = await this.get('/trending/movie/week');
+    return ((data?.results ?? []) as any[]).slice(0, MAX_SEARCH_RESULTS).map((r) => ({
+      tmdbId: r.id,
+      name: r.title ?? r.name ?? '',
+      overview: r.overview ?? '',
+      posterPath: r.poster_path ?? null,
+      year: (r.release_date || r.first_air_date || '').slice(0, 4) || null,
+    }));
+  }
+
   private async search(kind: 'tv' | 'movie', query: string): Promise<TmdbSearchResult[]> {
     const q = query.trim();
     if (q.length < MIN_QUERY_LENGTH) return [];

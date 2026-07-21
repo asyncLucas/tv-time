@@ -60,16 +60,3 @@ export function formatDuration(totalMinutes: number): string {
   if (!shown.length) return '0m';
   return shown.map(([n, u]) => `${n}${u}`).join(' ');
 }
-
-/** Long form for the profile header, e.g. `1 year, 2 months, 5 days`. */
-export function formatDurationLong(totalMinutes: number): string {
-  const p = durationParts(totalMinutes);
-  const units: [number, string][] = [
-    [p.years, 'year'],
-    [p.months, 'month'],
-    [p.days, 'day'],
-  ];
-  const named = units.filter(([n]) => n > 0).map(([n, u]) => `${n} ${u}${n === 1 ? '' : 's'}`);
-  if (!named.length) return `${p.hours} hour${p.hours === 1 ? '' : 's'}`;
-  return named.join(', ');
-}

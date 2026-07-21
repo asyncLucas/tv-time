@@ -1,22 +1,29 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
+import { addedKey } from '../../core/doc.service';
+import { TmdbService, TmdbSearchResult } from '../../core/tmdb.service';
 import { Poster } from '../../shared/poster';
+import { InitialsPipe } from '../../shared/initials';
 import { TitleSearch } from '../../shared/title-search';
 import { YearPipe } from '../../shared/year';
 import type { MovieView } from '../../core/models';
 
-type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
+type Filter = 'all' | 'watched' | 'watchlist' | 'favorites' | 'trending';
 
 @Component({
   selector: 'app-movies',
-  imports: [Poster, RouterLink, TitleSearch, YearPipe],
+  imports: [InitialsPipe, Poster, RouterLink, TitleSearch, YearPipe],
   template: `
     <div class="page">
       <div class="page-head">
         <div>
           <h1>Movies</h1>
-          <div class="sub">{{ filtered().length }} of {{ store.movies().length }} tracked films</div>
+          @if (filter() === 'trending') {
+            <div class="sub">Trending on TMDB this week</div>
+          } @else {
+            <div class="sub">{{ filtered().length }} of {{ store.movies().length }} tracked films</div>
+          }
         </div>
         <input class="search" placeholder="Search movies…" [value]="q()" (input)="q.set($any($event.target).value)" />
       </div>
@@ -24,12 +31,47 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
       <div class="tabs">
         @for (t of tabs; track t.key) {
           <button class="tab" [class.on]="filter() === t.key" (click)="filter.set(t.key)">
-            {{ t.label }} <span class="n">{{ count(t.key) }}</span>
+            {{ t.label }}
+            @if (t.key !== 'trending') { <span class="n">{{ count(t.key) }}</span> }
           </button>
         }
       </div>
 
-      @if (filtered().length) {
+      @if (filter() === 'trending') {
+        @if (!tmdb.hasKey()) {
+          <div class="empty">
+            Trending needs a free <a routerLink="/settings">TMDB key</a> — add one to see what
+            people are watching.
+          </div>
+        } @else if (trendingError()) {
+          <div class="empty">{{ trendingError() }}</div>
+        } @else if (loadingTrending()) {
+          <div class="empty">Loading trending films…</div>
+        } @else if (!trending().length) {
+          <div class="empty">TMDB returned nothing trending right now.</div>
+        } @else {
+          <div class="poster-grid">
+            @for (t of trending(); track t.tmdbId) {
+              <div class="card">
+                <a class="pw" [routerLink]="['/movies', addedKey('movie', t.tmdbId)]">
+                  <div class="tp">
+                    @if (tmdb.poster(t.posterPath, 'w342'); as src) {
+                      <img [src]="src" [alt]="t.name" loading="lazy" />
+                    } @else {
+                      <span class="tph">{{ t.name | initials }}</span>
+                    }
+                  </div>
+                  @if (store.isInLibrary('movie', t.tmdbId)) {
+                    <span class="in">✓ In library</span>
+                  }
+                </a>
+                <a class="name" [routerLink]="['/movies', addedKey('movie', t.tmdbId)]">{{ t.name }}</a>
+                <div class="yr">{{ t.year || '—' }}</div>
+              </div>
+            }
+          </div>
+        }
+      } @else if (filtered().length) {
         <div class="poster-grid">
           @for (m of filtered(); track m.uuid) {
             <div class="card">
@@ -75,7 +117,9 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
         </div>
       }
 
-      <app-title-search kind="movie" [query]="q()" />
+      @if (filter() !== 'trending') {
+        <app-title-search kind="movie" [query]="q()" />
+      }
     </div>
   `,
   styles: [
@@ -89,6 +133,14 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
         font-size: 14px;
         min-width: 240px;
         outline: none;
+      }
+      /* On phones the search wraps under the title — let it fill the row. */
+      @media (max-width: 720px) {
+        .search {
+          flex: 1 1 100%;
+          width: 100%;
+          min-width: 0;
+        }
       }
       .tabs {
         display: flex;
@@ -116,6 +168,41 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
       }
       .pw {
         position: relative;
+        display: block;
+      }
+      .tp {
+        aspect-ratio: 2 / 3;
+        border-radius: 10px;
+        overflow: hidden;
+        background: var(--bg-elev-2);
+        display: grid;
+        place-items: center;
+      }
+      .tp img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+      .tph {
+        color: var(--text-faint);
+        font-weight: 800;
+        font-size: 20px;
+      }
+      .in {
+        position: absolute;
+        top: 8px;
+        left: 8px;
+        background: rgba(0, 0, 0, 0.65);
+        backdrop-filter: blur(4px);
+        color: var(--good);
+        border-radius: 8px;
+        padding: 3px 8px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      .empty a {
+        color: var(--gold);
+        text-decoration: underline;
       }
       .pw:hover .actions {
         opacity: 1;
@@ -163,15 +250,47 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
 })
 export class Movies {
   store = inject(LibraryStore);
+  tmdb = inject(TmdbService);
   q = signal('');
   filter = signal<Filter>('all');
+
+  readonly trending = signal<TmdbSearchResult[]>([]);
+  readonly loadingTrending = signal(false);
+  readonly trendingError = signal<string | null>(null);
+  /** Guards the one-shot fetch: opening the tab again reuses what we already have. */
+  private trendingLoaded = false;
+
+  readonly addedKey = addedKey;
 
   tabs: { key: Filter; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'watched', label: 'Watched' },
     { key: 'watchlist', label: 'Watchlist' },
     { key: 'favorites', label: 'Favorites' },
+    { key: 'trending', label: 'Trending' },
   ];
+
+  constructor() {
+    // Nothing is fetched until the Trending tab is actually opened.
+    effect(() => {
+      if (this.filter() !== 'trending' || !this.tmdb.hasKey() || this.trendingLoaded) return;
+      this.trendingLoaded = true;
+      void this.loadTrending();
+    });
+  }
+
+  private async loadTrending(): Promise<void> {
+    this.loadingTrending.set(true);
+    this.trendingError.set(null);
+    try {
+      this.trending.set(await this.tmdb.trendingMovies());
+    } catch {
+      this.trendingLoaded = false; // let a re-open retry
+      this.trendingError.set('Could not reach TMDB. Check your connection and try again.');
+    } finally {
+      this.loadingTrending.set(false);
+    }
+  }
 
   filtered = computed<MovieView[]>(() => {
     const q = this.q().trim().toLowerCase();
@@ -193,6 +312,7 @@ export class Movies {
     if (f === 'all') return ms.length;
     if (f === 'watched') return ms.filter((m) => m.state.watched).length;
     if (f === 'watchlist') return ms.filter((m) => m.state.watchlist && !m.state.watched).length;
-    return ms.filter((m) => m.state.favorite).length;
+    if (f === 'favorites') return ms.filter((m) => m.state.favorite).length;
+    return 0; // trending isn't a slice of the library, so it has no count
   }
 }

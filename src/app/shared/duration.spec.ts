@@ -1,4 +1,4 @@
-import { durationParts, formatDuration, formatDurationLong } from './duration';
+import { durationParts, formatDuration } from './duration';
 
 const DAY = 60 * 24;
 
@@ -28,15 +28,5 @@ describe('formatDuration', () => {
   it('degrades to minutes for small and empty totals', () => {
     expect(formatDuration(42)).toBe('42m');
     expect(formatDuration(0)).toBe('0m');
-  });
-});
-
-describe('formatDurationLong', () => {
-  it('names and pluralises the calendar units', () => {
-    expect(formatDurationLong((365 + 2 * 30 + 1) * DAY)).toBe('1 year, 2 months, 1 day');
-  });
-
-  it('falls back to hours below a day', () => {
-    expect(formatDurationLong(3 * 60)).toBe('3 hours');
   });
 });

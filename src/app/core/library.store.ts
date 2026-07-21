@@ -115,11 +115,20 @@ export class LibraryStore {
    */
   private seedIdentityIntoCrdt(seed: Seed): void {
     const p = seed.profile;
+    const imported = finiteOr(p?.stats?.['time_spent']);
     this.docs.doc.transact(() => {
       if (p?.name && !this.docs.profile.get('name')) this.docs.profile.set('name', p.name);
-      const mins = p?.stats?.['time_spent'];
-      if (mins && this.docs.profile.get('lifetimeMinutes') == null) {
-        this.docs.profile.set('lifetimeMinutes', mins);
+      // The lifetime "offset" (the historical total TV Time reported, minus the
+      // part our own arithmetic can reconstruct from the backup's rows) can only
+      // be priced on a device that actually HOLDS the backup. Compute it once
+      // here and SYNC it, so every device — including a fresh install that only
+      // has the gist — reads the same constant. A seed-less device recomputing
+      // it from the bundled catalog would see 0 rows, keep the whole imported
+      // figure as the offset, and then double-count the synced watch log on top
+      // (this was why lifetime differed between devices).
+      if (imported != null && this.docs.profile.get('lifetimeOffset') == null) {
+        this.docs.profile.set('lifetimeMinutes', imported); // kept for back-compat
+        this.docs.profile.set('lifetimeOffset', Math.max(0, imported - seedDerivedMinutes(seed)));
       }
     });
   }
@@ -325,67 +334,25 @@ export class LibraryStore {
   }
 
   /**
-   * Runtime in minutes per watched movie uuid, from the backup. TV Time records
-   * the real runtime it counted, so films are exact where the backup knows them.
-   */
-  private movieMinutesByUuid = computed(() => {
-    const byUuid: Record<string, number> = {};
-    for (const m of this.seedSvc.seed()?.watchedMovies ?? []) {
-      const mins = finiteOr(m.runtimeSec);
-      if (mins != null && mins > 0) byUuid[m.uuid] = Math.round(mins / 60);
-    }
-    return byUuid;
-  });
-
-  /**
-   * Lifetime watch time, recomputed from what you've actually logged — it moves
-   * the moment you tick an episode or mark a film watched.
+   * Lifetime watch time from the live watch log, priced identically on every
+   * device so two devices never disagree.
    *
-   * Episodes carry no runtime (neither the TV Time backup nor our own watch
-   * records store one), so they're valued at a flat average. Films use their
-   * real runtime when the backup knows it and fall back to an average otherwise.
-   * Rewatches count each time through.
+   * Everything here reads SYNCED CRDT state and uses flat per-item averages:
+   * episode and film runtimes aren't in the data we sync, and pricing films by
+   * the backup's real runtimes would only work on the device that imported it —
+   * the very split that made this number differ between devices. Rewatches count
+   * each time through. The imported historical remainder is added separately as
+   * a synced, device-independent offset (see seedIdentityIntoCrdt).
    */
   private computedLifetimeMinutes = computed(() => {
-    const movieMinutes = this.movieMinutesByUuid();
     let total = 0;
     for (const w of Object.values(this.episodeWatchesSig())) {
       total += AVG_EPISODE_MINUTES * Math.max(1, finiteOr(w.nbTimes) ?? 1);
     }
     for (const m of this.movies()) {
-      if (m.state.watched) total += movieMinutes[m.uuid] ?? AVG_MOVIE_MINUTES;
+      if (m.state.watched) total += AVG_MOVIE_MINUTES;
     }
     return total;
-  });
-
-  /**
-   * The part of the imported TV Time total that our own arithmetic can't see.
-   *
-   * TV Time reports a lifetime figure that's usually larger than the sum of the
-   * per-episode rows in the same backup — viewing it counted whose rows didn't
-   * survive the export. Taking `max(imported, derived)` would pin the stat to
-   * that figure and freeze it until you out-watched it, which is exactly the
-   * "not calculating" symptom. So instead we price the backup's OWN rows with
-   * the same arithmetic we use live, and keep only the unexplained remainder as
-   * a fixed offset. New watches then always add on top of it.
-   */
-  private lifetimeOffsetMinutes = computed(() => {
-    const seed = this.seedSvc.seed();
-    const imported =
-      finiteOr(this.profileSig()['lifetimeMinutes']) ??
-      finiteOr(seed?.profile.stats?.['time_spent']) ??
-      0;
-    if (!imported) return 0;
-
-    let seedDerived = 0;
-    for (const e of seed?.watchedEpisodes ?? []) {
-      if (e.seen) seedDerived += AVG_EPISODE_MINUTES * Math.max(1, finiteOr(e.nbTimesWatched) ?? 1);
-    }
-    for (const m of seed?.watchedMovies ?? []) {
-      const mins = finiteOr(m.runtimeSec);
-      seedDerived += mins != null && mins > 0 ? Math.round(mins / 60) : AVG_MOVIE_MINUTES;
-    }
-    return Math.max(0, imported - seedDerived);
   });
 
   /** Aggregate stats for the profile/dashboard view. */
@@ -394,6 +361,9 @@ export class LibraryStore {
     const movies = this.movies();
     const episodeWatches = Object.values(this.episodeWatchesSig());
     const derived = this.computedLifetimeMinutes();
+    // Synced, computed-once offset — the same on every device (see
+    // seedIdentityIntoCrdt). Absent until the backup-holding device sets it.
+    const offset = finiteOr(this.profileSig()['lifetimeOffset']) ?? 0;
     return {
       // "my library" = titles the user has actually added, not the whole catalog
       showsFollowed: shows.filter((s) => s.state.status !== 'none').length,
@@ -402,10 +372,9 @@ export class LibraryStore {
       moviesTracked: movies.filter((m) => m.state.watched || m.state.watchlist || m.state.favorite).length,
       moviesWatched: movies.filter((m) => m.state.watched).length,
       episodesWatched: episodeWatches.length,
-      // Lifetime total: your live watch log plus whatever the TV Time figure
-      // credited you with beyond it. See lifetimeOffsetMinutes — the offset is
-      // constant, so every episode you tick moves this number.
-      lifetimeMinutes: derived + this.lifetimeOffsetMinutes(),
+      // Lifetime total: your live watch log plus the synced historical offset.
+      // The offset is constant, so every episode you tick moves this number.
+      lifetimeMinutes: derived + offset,
     };
   });
 
@@ -681,10 +650,29 @@ const AVATAR_PX = 256;
  * runtime is never in the data — not in the TV Time backup, not in our own
  * watch records — so every episode is priced the same; 42 is the usual midpoint
  * between half-hour comedies and hour-long dramas once ad breaks come out.
- * Films only fall back here when the backup omitted their runtime.
+ * Films are flat-priced too: the backup knows their real runtimes, but only the
+ * device holding the backup does, and a number that depends on which device you
+ * open is worse than one that is uniformly approximate.
  */
 const AVG_EPISODE_MINUTES = 42;
 const AVG_MOVIE_MINUTES = 115;
+
+/**
+ * Price the backup's OWN watch rows with the exact arithmetic the live tally
+ * uses (see computedLifetimeMinutes), so the two can be compared. Whatever the
+ * imported TV Time total has beyond this is the historical remainder we keep as
+ * a fixed, synced offset. Same flat averages as the live side — never the
+ * backup's real film runtimes — so the offset a backup-holding device stores is
+ * consistent with what every device then recomputes live.
+ */
+function seedDerivedMinutes(seed: Seed): number {
+  let total = 0;
+  for (const e of seed.watchedEpisodes ?? []) {
+    if (e.seen) total += AVG_EPISODE_MINUTES * Math.max(1, finiteOr(e.nbTimesWatched) ?? 1);
+  }
+  total += (seed.watchedMovies?.length ?? 0) * AVG_MOVIE_MINUTES;
+  return total;
+}
 
 /**
  * Narrow an avatar coming out of the CRDT to something safe to put in `[src]`.

@@ -73,6 +73,14 @@ type Filter = 'all' | 'watching' | 'completed' | 'watchlist' | 'favorites';
       .search:focus {
         border-color: #3a3f4a;
       }
+      /* On phones the search wraps under the title — let it fill the row. */
+      @media (max-width: 720px) {
+        .search {
+          flex: 1 1 100%;
+          width: 100%;
+          min-width: 0;
+        }
+      }
       .tabs {
         display: flex;
         gap: 8px;

@@ -1,6 +1,6 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { LibraryStore } from '../../core/library.store';
-import { formatDurationLong } from '../../shared/duration';
+import { formatDuration } from '../../shared/duration';
 import { YearPipe } from '../../shared/year';
 
 @Component({
@@ -11,9 +11,14 @@ import { YearPipe } from '../../shared/year';
       @if (store.profile(); as p) {
         <div class="head">
           <button class="avatar-btn" (click)="picker.click()" [disabled]="busy()"
-                  [title]="p.image ? 'Change picture' : 'Add a picture'">
-            @if (p.image) {
-              <img class="avatar" [src]="p.image" [alt]="p.name || 'Profile picture'" />
+                  [title]="photo() ? 'Change picture' : 'Add a picture'">
+            @if (photo(); as img) {
+              <img
+                class="avatar"
+                [src]="img"
+                [alt]="p.name || 'Profile picture'"
+                (error)="brokenSrc.set(img)"
+              />
             } @else {
               <span class="avatar placeholder">{{ initial(p.name) }}</span>
             }
@@ -36,7 +41,7 @@ import { YearPipe } from '../../shared/year';
             } @else {
               <div class="sub">Local-first — no account. Your name and picture sync to your own devices.</div>
             }
-            @if (p.image) {
+            @if (photo()) {
               <button class="link" (click)="store.clearProfileImage()">Remove picture</button>
             }
           </div>
@@ -46,7 +51,10 @@ import { YearPipe } from '../../shared/year';
         <div class="grid">
           <div class="tile big gold">
             <div class="n">{{ lifetime() }}</div>
-            <div class="l">watched (lifetime) · {{ hours() }} hours</div>
+            <div class="l">
+              watched (lifetime)
+              @if (hours()) { · {{ hours() }} hours }
+            </div>
           </div>
           <div class="tile">
             <div class="n">{{ s().showsFollowed }}</div>
@@ -122,6 +130,9 @@ import { YearPipe } from '../../shared/year';
         cursor: pointer;
         border-radius: 50%;
         line-height: 0;
+        flex-shrink: 0;
+        /* keep the hover "Edit" strip inside the circle */
+        overflow: hidden;
       }
       .avatar-btn:disabled {
         opacity: 0.6;
@@ -261,6 +272,21 @@ export class Profile {
   busy = signal(false);
   error = signal<string | null>(null);
 
+  /**
+   * The avatar src that failed to load, if any. Backups restored from TV Time
+   * carry a profile-picture URL on its now-dead CDN, so the <img> 404s; a fresh
+   * upload (a synced data: URI) simply changes the src, which clears this. When
+   * the current picture is this value we render the initial placeholder instead
+   * of a broken image.
+   */
+  brokenSrc = signal<string | null>(null);
+
+  /** The avatar to show: the profile picture, or null once it has failed to load. */
+  readonly photo = computed(() => {
+    const img = this.store.profile()?.image;
+    return img && this.brokenSrc() !== img ? img : null;
+  });
+
   initial(name: string): string {
     return name.trim().charAt(0).toUpperCase() || '?';
   }
@@ -286,8 +312,19 @@ export class Profile {
     }
   }
 
-  hours = computed(() => Math.round((this.store.stats().lifetimeMinutes || 0) / 60).toLocaleString());
-  lifetime = computed(() => formatDurationLong(this.store.stats().lifetimeMinutes));
+  /**
+   * The hour total backing the headline duration. Floored, not rounded — the
+   * headline floors too, and "1 hour · 2 hours" in one tile is worse than
+   * losing a fraction. Suppressed below a day, where the headline already reads
+   * in hours and would only repeat itself.
+   */
+  hours = computed(() => {
+    const mins = this.store.stats().lifetimeMinutes || 0;
+    return mins < 60 * 24 ? '' : Math.floor(mins / 60).toLocaleString();
+  });
+  // Compact ("3y 4mo"), not the long prose form: this tile renders at 40px, and
+  // "3 years, 4 months, 12 days" wraps to three lines at any realistic total.
+  lifetime = computed(() => formatDuration(this.store.stats().lifetimeMinutes));
 
   topGenres = computed(() => {
     const counts: Record<string, number> = {};

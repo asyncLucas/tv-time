@@ -96,6 +96,16 @@ img {
   .page-head h1 {
     font-size: 24px;
   }
+  /* iOS Safari auto-zooms when you focus a control whose font is < 16px. Pin
+     every text-entry control to 16px on phones so focusing search/settings
+     fields never triggers that jump. The `:not()` guards give this enough
+     specificity to win over component-scoped sizes without touching pinch-zoom
+     (which stays available, unlike a `user-scalable=no` viewport hack). */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
 .page-head {
   display: flex;
