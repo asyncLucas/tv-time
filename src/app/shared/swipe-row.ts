@@ -7,6 +7,10 @@ import { Component, output, signal } from '@angular/core';
  *
  * Tap vs. swipe is disambiguated by horizontal travel: a real drag suppresses
  * the synthesized click so a swipe never accidentally opens the item.
+ *
+ * The row is also a keyboard target (Enter/Space open it) — swiping is the
+ * touch affordance, not the only way in — and `touchcancel` snaps it back so a
+ * gesture the browser steals for scrolling can't strand the row half-open.
  */
 @Component({
   selector: 'app-swipe-row',
@@ -17,12 +21,17 @@ import { Component, output, signal } from '@angular/core';
       </div>
       <div
         class="swipe-fg"
+        role="button"
+        tabindex="0"
         [class.snap]="snap()"
         [style.transform]="'translateX(' + dx() + 'px)'"
         (touchstart)="onStart($event)"
         (touchmove)="onMove($event)"
         (touchend)="onEnd()"
+        (touchcancel)="onCancel()"
         (click)="onClick()"
+        (keydown.enter)="open.emit()"
+        (keydown.space)="open.emit()"
       >
         <ng-content />
         <button class="swipe-del" (click)="onDelete($event)" aria-label="Remove from list">✕</button>
@@ -135,6 +144,16 @@ export class SwipeRow {
     } else {
       this.dx.set(0);
     }
+  }
+
+  /**
+   * The browser took the gesture over (usually to scroll). Snap back rather
+   * than reusing onEnd — a cancelled swipe must never count as a removal.
+   */
+  onCancel(): void {
+    this.dragging = false;
+    this.snap.set(true);
+    this.dx.set(0);
   }
 
   onClick(): void {

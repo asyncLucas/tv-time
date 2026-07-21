@@ -140,19 +140,6 @@ export interface EpisodeWatch {
   nbTimes: number;
 }
 
-/**
- * A show added by the user that was NOT in the seed catalog. Minimal reference
- * data so other devices can render it without a fresh TMDB lookup.
- */
-export interface AddedShowRef {
-  uuid: string;
-  name: string;
-  tvdbId: string | null;
-  tmdbId: number | null;
-  posterPath: string | null;
-  addedAt: string;
-}
-
 // ---------------------------------------------------------------------------
 // View models (catalog + user state, merged — what the UI actually renders)
 // ---------------------------------------------------------------------------

@@ -3,6 +3,7 @@ import * as Y from 'yjs';
 import { DocService, epKey } from './doc.service';
 import { SeedService } from './seed.service';
 import type {
+  Seed,
   ShowState,
   MovieState,
   EpisodeWatch,
@@ -43,7 +44,7 @@ export class LibraryStore {
     // Load the catalog (browse content). We do NOT bootstrap user state from it
     // — the catalog is shared/anonymous; each person builds their own library.
     // Personal state is only ever seeded by an explicit backup import.
-    await this.seedSvc.load();
+    const seed = await this.seedSvc.load();
     await this.docs.whenReady();
 
     this.bind(this.docs.showState, this.showStateSig);
@@ -51,6 +52,12 @@ export class LibraryStore {
     this.bind(this.docs.episodeWatches, this.episodeWatchesSig);
     this.bind(this.docs.lists, this.listsSig);
     this.bind(this.docs.profile, this.profileSig);
+
+    // Lift a local identity (from a backup imported on THIS device) into the
+    // synced doc, if it isn't there yet. On an anonymous device the seed has no
+    // name, so this is a no-op — it only ever promotes a real profile to sync,
+    // fixing installs whose backup was imported before identity-sync existed.
+    if (seed) this.seedIdentityIntoCrdt(seed);
   }
 
   private bind<T>(map: Y.Map<T>, sig: ReturnType<typeof signal<Record<string, T>>>): void {
@@ -81,6 +88,25 @@ export class LibraryStore {
     }
     const seed = await this.seedSvc.importSeed(parsed);
     this.docs.bootstrapFromSeed(seed);
+    this.seedIdentityIntoCrdt(seed);
+  }
+
+  /**
+   * Copy the backup's identity (name, lifetime-watched) into the CRDT so it
+   * SYNCS to your other devices. The seed profile itself is device-local and
+   * never travels; without this, a device that only has the gist token would
+   * show an anonymous profile. Runs on every import but never clobbers an
+   * existing (edited or already-synced) value.
+   */
+  private seedIdentityIntoCrdt(seed: Seed): void {
+    const p = seed.profile;
+    this.docs.doc.transact(() => {
+      if (p?.name && !this.docs.profile.get('name')) this.docs.profile.set('name', p.name);
+      const mins = p?.stats?.['time_spent'];
+      if (mins && this.docs.profile.get('lifetimeMinutes') == null) {
+        this.docs.profile.set('lifetimeMinutes', mins);
+      }
+    });
   }
 
   /** Start with an empty, anonymous library. */
@@ -98,6 +124,16 @@ export class LibraryStore {
     const counts: Record<string, number> = {};
     for (const w of Object.values(this.episodeWatchesSig())) {
       counts[w.tvdbId] = (counts[w.tvdbId] ?? 0) + 1;
+    }
+    return counts;
+  });
+
+  /** Episode-watch count per `${tvdbId}:${season}` — backs watchedInSeason(). */
+  private watchedCountBySeason = computed(() => {
+    const counts: Record<string, number> = {};
+    for (const w of Object.values(this.episodeWatchesSig())) {
+      const key = `${w.tvdbId}:${w.season}`;
+      counts[key] = (counts[key] ?? 0) + 1;
     }
     return counts;
   });
@@ -222,8 +258,13 @@ export class LibraryStore {
       moviesTracked: movies.filter((m) => m.state.watched || m.state.watchlist || m.state.favorite).length,
       moviesWatched: movies.filter((m) => m.state.watched).length,
       episodesWatched: episodeWatches.length,
-      // seed-provided lifetime stats from TV Time
-      lifetimeMinutes: this.seedSvc.seed()?.profile.stats?.['time_spent'] ?? 0,
+      // Lifetime total from TV Time: the synced value wins, else the local
+      // seed's. Type-checked because the synced side is whatever a peer wrote —
+      // a non-number here would turn every derived stat into NaN.
+      lifetimeMinutes:
+        finiteOr(this.profileSig()['lifetimeMinutes']) ??
+        finiteOr(this.seedSvc.seed()?.profile.stats?.['time_spent']) ??
+        0,
     };
   });
 
@@ -240,13 +281,15 @@ export class LibraryStore {
     return !!this.episodeWatchesSig()[epKey(tvdbId, season, episode)];
   }
 
-  /** Episodes of a show-season marked watched — reactive, no episode list needed. */
+  /**
+   * Episodes of a show-season marked watched — reactive, no episode list needed.
+   *
+   * Reads a memoized index rather than scanning: this is called from a template
+   * loop (once per season), so a linear scan per call would be O(seasons ×
+   * watches) on every change detection.
+   */
   watchedInSeason(tvdbId: string, season: number): number {
-    let n = 0;
-    for (const w of Object.values(this.episodeWatchesSig())) {
-      if (w.tvdbId === tvdbId && w.season === season) n++;
-    }
-    return n;
+    return this.watchedCountBySeason()[`${tvdbId}:${season}`] ?? 0;
   }
 
   // -------------------------------------------------------------------------
@@ -347,6 +390,11 @@ const AVATAR_PX = 256;
  * without leaning on the template sanitizer as the sole line of defence.
  * `null` clears the avatar; `undefined` means "no edit, fall back to the seed".
  */
+/** A usable non-negative number, or undefined so the caller can fall through. */
+function finiteOr(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
 function safeImageSrc(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;

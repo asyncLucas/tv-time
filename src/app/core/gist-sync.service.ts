@@ -39,6 +39,7 @@ export class GistSyncService {
   private pushTimer?: ReturnType<typeof setTimeout>;
   private pollTimer?: ReturnType<typeof setInterval>;
   private busy = false;
+  private rerun = false;
   private wired = false;
 
   private token(): string | undefined {
@@ -72,14 +73,32 @@ export class GistSyncService {
     }
   }
 
-  /** Manual "Sync now": pull remote, merge, push merged back. */
+  /**
+   * Pull remote, merge, push the merged result back — the only routine that
+   * writes to the gist.
+   *
+   * Always pulling first is what makes concurrent devices safe: a push sends
+   * the *whole* doc state, so pushing without merging would overwrite edits
+   * another device made since our last poll. Pull-then-push means the payload
+   * we write is a superset of both sides.
+   *
+   * Runs serialized. A request arriving mid-flight sets `rerun` instead of
+   * overlapping, so the newest local state is never left unpushed.
+   */
   async sync(): Promise<void> {
-    if (this.busy || !this.token()) return;
+    if (!this.token()) return;
+    if (this.busy) {
+      this.rerun = true;
+      return;
+    }
     this.busy = true;
     this.status.set('syncing');
     try {
-      await this.pull();
-      await this.push();
+      do {
+        this.rerun = false;
+        await this.pull();
+        await this.push();
+      } while (this.rerun);
       this.status.set('synced');
       this.lastSync.set(new Date().toISOString());
       this.error.set(null);
@@ -87,6 +106,7 @@ export class GistSyncService {
       this.fail(e);
     } finally {
       this.busy = false;
+      this.rerun = false;
     }
   }
 
@@ -171,17 +191,15 @@ export class GistSyncService {
     this.pollTimer = setInterval(() => this.pull().catch(() => {}), POLL_MS);
   }
 
+  /**
+   * A local edit landed. Debounce, then run a full merge cycle — not a bare
+   * push, which would clobber anything a sibling device wrote since the last
+   * poll (see sync()).
+   */
   private onDocUpdate = (_u: Uint8Array, origin: unknown): void => {
     if (origin === GIST_ORIGIN) return; // remote change — don't echo it back
     clearTimeout(this.pushTimer);
-    this.pushTimer = setTimeout(() => {
-      this.push()
-        .then(() => {
-          this.status.set('synced');
-          this.lastSync.set(new Date().toISOString());
-        })
-        .catch((e) => this.fail(e));
-    }, PUSH_DEBOUNCE_MS);
+    this.pushTimer = setTimeout(() => void this.sync(), PUSH_DEBOUNCE_MS);
   };
 
   private teardown(): void {

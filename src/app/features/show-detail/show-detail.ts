@@ -194,9 +194,12 @@ export class ShowDetail {
     if (!tvdbId) return;
     this.store.setEpisodeWatched(tvdbId, ep.seasonNumber, ep.episodeNumber, !this.isWatched(tvdbId, ep));
   }
-  /** Watched count for a season — 0 until that season's episode list has loaded. */
+
   /** True once every episode of a season is watched (hides its "Mark all"). */
-  seasonComplete(tvdbId: string | null, season: { seasonNumber: number; episodeCount: number }): boolean {
+  seasonComplete(
+    tvdbId: string | null,
+    season: { seasonNumber: number; episodeCount: number },
+  ): boolean {
     return (
       !!tvdbId &&
       season.episodeCount > 0 &&
@@ -248,12 +251,17 @@ export class ShowDetail {
       }));
       const last = info.seasons[info.seasons.length - 1];
       const lastEps = this.episodes()[last.seasonNumber] ?? [];
-      const lastEp = lastEps.length ? Math.max(...lastEps.map((e) => e.episodeNumber)) : Number.MAX_SAFE_INTEGER;
+      // If the final season's list failed to load, an unbounded ceiling still
+      // marks everything `payload` did contain — it never invents episodes.
+      const lastEp = lastEps.length
+        ? Math.max(...lastEps.map((e) => e.episodeNumber))
+        : Number.MAX_SAFE_INTEGER;
       this.store.markWatchedUpTo(s.tvdbId, last.seasonNumber, lastEp, payload);
     } finally {
       this.markingAll.set(false);
     }
   }
+
   rate(n: number): void {
     const cur = this.show()?.state.rating;
     this.store.rateShow(this.uuid(), cur === n ? null : n);
