@@ -87,6 +87,16 @@ img {
     calc(40px + var(--safe-left));
   max-width: 1400px;
 }
+/* tighter gutters on phones so content isn't squeezed by the 40px desktop inset */
+@media (max-width: 720px) {
+  .page {
+    padding: calc(20px + var(--safe-top)) calc(16px + var(--safe-right))
+      calc(80px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  }
+  .page-head h1 {
+    font-size: 24px;
+  }
+}
 .page-head {
   display: flex;
   align-items: flex-end;

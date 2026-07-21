@@ -13,29 +13,6 @@ import { SeedService } from '../../core/seed.service';
     <div class="page">
       <div class="page-head"><h1>Settings</h1></div>
 
-      <!-- TMDB -->
-      <section class="card">
-        <h2>TMDB metadata</h2>
-        <p class="hint">
-          A free key from
-          <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org</a>
-          unlocks posters, seasons, episodes and airing schedules. Stored only on this device.
-        </p>
-        <div class="row">
-          <input
-            class="in"
-            type="password"
-            placeholder="TMDB API key (v3)"
-            [value]="key()"
-            (input)="key.set($any($event.target).value)"
-          />
-          <button class="btn primary" (click)="saveKey()">Save</button>
-        </div>
-        <div class="status" [class.ok]="tmdb.hasKey()">
-          {{ tmdb.hasKey() ? '✓ Key active' : 'No key set — posters use cached artwork only' }}
-        </div>
-      </section>
-
       <!-- Cloud sync via GitHub Gist -->
       <section class="card">
         <h2>Cloud sync · GitHub Gist</h2>
@@ -85,6 +62,30 @@ import { SeedService } from '../../core/seed.service';
             <p class="hint err-hint">{{ gist.error() }}</p>
           }
         }
+      </section>
+
+      <!-- TMDB -->
+      <section class="card">
+        <h2>TMDB metadata</h2>
+        <p class="hint">
+          A free key from
+          <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">themoviedb.org</a>
+          unlocks posters, seasons, episodes and airing schedules. Stored in this browser and — with
+          Cloud sync on — carried to your other devices, so you only set it once.
+        </p>
+        <div class="row">
+          <input
+            class="in"
+            type="password"
+            placeholder="TMDB API key (v3)"
+            [value]="key()"
+            (input)="key.set($any($event.target).value)"
+          />
+          <button class="btn primary" (click)="saveKey()">Save</button>
+        </div>
+        <div class="status" [class.ok]="tmdb.hasKey()">
+          {{ tmdb.hasKey() ? '✓ Key active' : 'No key set — posters use cached artwork only' }}
+        </div>
       </section>
 
       <!-- Sync -->
@@ -433,8 +434,9 @@ export class Settings {
   "lists": {
     "<list-id>": { "name": "para assistir", "items": [ { "title": "…", "uuid": "…" } ] }
   }
-  // note: your TMDB key + sync settings are device-local (IndexedDB) and are
-  // intentionally NOT part of this file — set them per device under Settings.
+  // note: credentials are intentionally NOT part of this file. Your TMDB key
+  // travels only through your own cloud sync; the gist token and P2P passphrase
+  // never leave the device at all. Set those per device under Settings.
 }`;
 
   saveKey(): void {

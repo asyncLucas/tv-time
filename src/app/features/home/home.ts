@@ -106,6 +106,14 @@ export class Home {
 
   readonly days = computed(() => Math.round((this.store.stats().lifetimeMinutes || 0) / 60 / 24));
 
+  /**
+   * Identifies the newest resolve pass. The effect below re-fires on every
+   * change to the watching list — including each episode you tick off — so
+   * several passes can be in flight at once. Without this, a slow earlier pass
+   * could land after a newer one and overwrite it with stale results.
+   */
+  private runId = 0;
+
   constructor() {
     effect(() => {
       // resolve airing-soon episodes for currently-watching shows (cache-first)
@@ -114,10 +122,11 @@ export class Home {
   }
 
   private async resolveUpNext(shows: ShowView[]): Promise<void> {
-    const withTvdb = shows.filter((s) => s.tvdbId).slice(0, 40);
+    const run = ++this.runId;
+    const queue = shows.filter((s) => s.tvdbId).slice(0, MAX_SHOWS_PROBED);
     const found: UpNext[] = [];
+
     // small concurrency to be gentle on the API
-    const queue = [...withTvdb];
     const workers = Array.from({ length: 5 }, async () => {
       while (queue.length) {
         const s = queue.shift()!;
@@ -125,12 +134,18 @@ export class Home {
           const info = await this.tmdb.showByTvdb(s.tvdbId!);
           if (info?.nextEpisode?.airDate) found.push({ show: s, ep: info.nextEpisode });
         } catch {
-          /* ignore */
+          /* a title we can't resolve simply doesn't appear in "airing soon" */
         }
       }
     });
     await Promise.all(workers);
+    if (run !== this.runId) return; // superseded by a newer pass
+
     found.sort((a, b) => (a.ep.airDate! < b.ep.airDate! ? -1 : 1));
-    this.upNext.set(found.slice(0, 12));
+    this.upNext.set(found.slice(0, MAX_UP_NEXT));
   }
 }
+
+/** Cap the fan-out at TMDB so a large library can't melt the rate limit. */
+const MAX_SHOWS_PROBED = 40;
+const MAX_UP_NEXT = 12;

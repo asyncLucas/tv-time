@@ -12,6 +12,8 @@ const MARKER = 'tv-time-revival · sync state (do not delete)';
 const GIST_ORIGIN = 'gist-sync';
 const POLL_MS = 45_000;
 const PUSH_DEBOUNCE_MS = 2_500;
+/** Safety stop for gist discovery paging (100 per page = 10k gists). */
+const MAX_GIST_PAGES = 100;
 
 /**
  * Truly-serverless sync through a private GitHub Gist the user owns.
@@ -126,15 +128,33 @@ export class GistSyncService {
   // -------------------------------------------------------------------------
   // Gist plumbing
   // -------------------------------------------------------------------------
+  /**
+   * Point this device at the user's state gist, creating it on first connect.
+   *
+   * Discovery walks every page of the user's gists rather than just the first
+   * hundred — stopping early would silently create a *second* state gist for
+   * anyone with a busy account, splitting their devices across two of them.
+   * The description marker is preferred over a filename match so an unrelated
+   * gist that happens to carry the same filename can't hijack sync.
+   */
   private async ensureGist(): Promise<void> {
     if (this.gistId()) return;
-    // discover an existing state gist by its marker, else create one
-    const list = await this.api('GET', '/gists?per_page=100');
-    const found = (list as any[]).find(
-      (g) => g.description === MARKER || (g.files && g.files[FILENAME]),
-    );
-    if (found) {
-      await this.config.set('gistId', found.id);
+
+    let byFilename: any = null;
+    for (let page = 1; page <= MAX_GIST_PAGES; page++) {
+      const batch = (await this.api('GET', `/gists?per_page=100&page=${page}`)) as any[];
+      if (!Array.isArray(batch) || !batch.length) break;
+
+      const marked = batch.find((g) => g.description === MARKER);
+      if (marked) {
+        await this.config.set('gistId', marked.id);
+        return;
+      }
+      byFilename ??= batch.find((g) => g.files?.[FILENAME]);
+      if (batch.length < 100) break; // last page
+    }
+    if (byFilename) {
+      await this.config.set('gistId', byFilename.id);
       return;
     }
     const created = await this.api('POST', '/gists', {
@@ -151,8 +171,15 @@ export class GistSyncService {
     const gist = await this.api('GET', `/gists/${id}`);
     const file = (gist as any).files?.[FILENAME];
     if (!file) return;
-    // large gists get truncated inline; fall back to raw_url
-    const content = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
+    // Large gists get truncated inline; fall back to raw_url. That response is
+    // status-checked — an error page's HTML would otherwise flow on as if it
+    // were state content.
+    let content: string | undefined = file.content;
+    if (file.truncated && file.raw_url) {
+      const raw = await fetch(file.raw_url);
+      if (!raw.ok) throw new Error(`Could not read synced state (HTTP ${raw.status})`);
+      content = await raw.text();
+    }
     if (!content) return;
     let update: Uint8Array | null = null;
     try {

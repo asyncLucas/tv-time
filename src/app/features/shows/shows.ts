@@ -2,13 +2,14 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { Poster } from '../../shared/poster';
+import { TitleSearch } from '../../shared/title-search';
 import type { ShowView, ShowStatus } from '../../core/models';
 
 type Filter = 'all' | 'watching' | 'completed' | 'watchlist' | 'favorites';
 
 @Component({
   selector: 'app-shows',
-  imports: [RouterLink, Poster],
+  imports: [RouterLink, Poster, TitleSearch],
   template: `
     <div class="page">
       <div class="page-head">
@@ -45,8 +46,13 @@ type Filter = 'all' | 'watching' | 'completed' | 'watchlist' | 'favorites';
           }
         </div>
       } @else {
-        <div class="empty">No shows match.</div>
+        <div class="empty">
+          No shows in your library match
+          @if (q().trim()) { — search TMDB below to add one. } @else { .}
+        </div>
       }
+
+      <app-title-search kind="show" [query]="q()" />
     </div>
   `,
   styles: [

@@ -5,6 +5,29 @@ const DB = 'tvtime-catalog';
 const STORE = 'kv';
 const KEY = 'seed';
 
+/** A catalog with no content — the offline fallback for an anonymous start. */
+function emptySeed(): Seed {
+  return {
+    meta: { source: 'fresh', syncedApprox: '', backedUp: '', schema: 1, note: '' },
+    profile: {
+      id: 0,
+      login: '',
+      name: '',
+      image: null,
+      timezone: null,
+      lang: 'en',
+      createdAt: null,
+      favoriteGenres: [],
+      stats: {},
+    },
+    shows: [],
+    movies: [],
+    watchedMovies: [],
+    watchedEpisodes: [],
+    customLists: [],
+  };
+}
+
 /**
  * Owns the user's catalog (their shows/movies reference data).
  *
@@ -70,28 +93,20 @@ export class SeedService {
     return seed;
   }
 
-  /** Begin with an empty, anonymous library (add titles later). */
+  /**
+   * Begin anonymously: no personal backup, just the shared catalog to browse
+   * and TMDB search to add whatever isn't in it.
+   *
+   * Deliberately does NOT persist anything. Writing an empty catalog here would
+   * store a truthy-but-empty seed that `load()` prefers over the bundled
+   * catalog forever after — leaving the user with a permanently empty app and
+   * no way back. Skipping the write means the next launch simply picks the
+   * bundled catalog up again.
+   */
   async startEmpty(): Promise<Seed> {
-    const empty: Seed = {
-      meta: { source: 'fresh', syncedApprox: '', backedUp: '', schema: 1, note: '' },
-      profile: {
-        id: 0,
-        login: '',
-        name: '',
-        image: null,
-        timezone: null,
-        lang: 'en',
-        createdAt: null,
-        favoriteGenres: [],
-        stats: {},
-      },
-      shows: [],
-      movies: [],
-      watchedMovies: [],
-      watchedEpisodes: [],
-      customLists: [],
-    };
-    return this.importSeed(empty);
+    const seed = (await this.fetchBundledCatalog()) ?? emptySeed();
+    this.apply(seed);
+    return seed;
   }
 
   /** Forget the catalog on this device (used by "Reset local data"). */

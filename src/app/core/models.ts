@@ -40,6 +40,13 @@ export interface SeedMovie {
   followedAt: string | null;
   watchedAt: string | null;
   favorite: boolean;
+  /**
+   * Ready-made artwork URL. TV Time backups don't carry one for films, so this
+   * is absent for catalog entries — it exists for titles added from TMDB
+   * search, where the poster path is already known and re-resolving it through
+   * the API would be a wasted round-trip.
+   */
+  cachedPoster?: string | null;
 }
 
 export interface SeedWatchedMovie {
@@ -138,6 +145,32 @@ export interface EpisodeWatch {
   episode: number;
   watchedAt: string;
   nbTimes: number;
+}
+
+/**
+ * A title the user added from TMDB search that wasn't in the catalog.
+ *
+ * These live in the CRDT (not the device-local seed) so an added show follows
+ * you to your other devices — the catalog itself never syncs. Enough reference
+ * data is copied to render a card offline without a fresh TMDB call.
+ *
+ * The `uuid` is derived from the TMDB id (see addedKey), not random: two
+ * devices adding the same title independently must converge on one entry
+ * rather than each inserting its own.
+ */
+export interface AddedTitle {
+  uuid: string;
+  name: string;
+  tmdbId: number;
+  /** Series id — episode tracking is keyed by it, so shows need it resolved. */
+  tvdbId: string | null;
+  /** Movie id — movie enrichment resolves through it. */
+  imdbId: string | null;
+  posterPath: string | null;
+  firstReleaseDate: string | null;
+  overview: string | null;
+  genres: string[];
+  addedAt: string;
 }
 
 // ---------------------------------------------------------------------------

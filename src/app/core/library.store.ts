@@ -1,7 +1,8 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import * as Y from 'yjs';
-import { DocService, epKey } from './doc.service';
+import { DocService, addedKey, epKey } from './doc.service';
 import { SeedService } from './seed.service';
+import { TmdbService, tmdbPosterUrl, type TmdbSearchResult } from './tmdb.service';
 import type {
   Seed,
   ShowState,
@@ -10,6 +11,9 @@ import type {
   ShowView,
   MovieView,
   ShowStatus,
+  AddedTitle,
+  SeedShow,
+  SeedMovie,
 } from './models';
 
 /**
@@ -26,6 +30,7 @@ import type {
 export class LibraryStore {
   private docs = inject(DocService);
   private seedSvc = inject(SeedService);
+  private tmdb = inject(TmdbService);
 
   // --- raw CRDT mirrors (plain snapshots) ---
   private showStateSig = signal<Record<string, ShowState>>({});
@@ -33,6 +38,8 @@ export class LibraryStore {
   private episodeWatchesSig = signal<Record<string, EpisodeWatch>>({});
   private listsSig = signal<Record<string, any>>({});
   private profileSig = signal<Record<string, any>>({});
+  private addedShowsSig = signal<Record<string, AddedTitle>>({});
+  private addedMoviesSig = signal<Record<string, AddedTitle>>({});
 
   private started = false;
 
@@ -52,6 +59,8 @@ export class LibraryStore {
     this.bind(this.docs.episodeWatches, this.episodeWatchesSig);
     this.bind(this.docs.lists, this.listsSig);
     this.bind(this.docs.profile, this.profileSig);
+    this.bind(this.docs.addedShows, this.addedShowsSig);
+    this.bind(this.docs.addedMovies, this.addedMoviesSig);
 
     // Lift a local identity (from a backup imported on THIS device) into the
     // synced doc, if it isn't there yet. On an anonymous device the seed has no
@@ -138,23 +147,44 @@ export class LibraryStore {
     return counts;
   });
 
+  /**
+   * The browsable show list: the device's catalog plus anything the user added
+   * from TMDB search.
+   *
+   * Added titles are filtered against the catalog by TheTVDB id, so adding a
+   * show you already had doesn't produce a second card. The catalog entry wins
+   * — it carries the richer backup data (follow dates, cached artwork).
+   */
   readonly shows = computed<ShowView[]>(() => {
     const seed = this.seedSvc.seed();
-    if (!seed) return [];
     const state = this.showStateSig();
     const counts = this.watchedCountByTvdb();
-    return seed.shows.map((s) => ({
+
+    const catalog = seed?.shows ?? [];
+    const known = new Set(catalog.map((s) => s.tvdbId).filter(Boolean));
+    const added = Object.values(this.addedShowsSig())
+      .filter((a) => !a.tvdbId || !known.has(a.tvdbId))
+      .map(addedToSeedShow);
+
+    return [...catalog, ...added].map((s) => ({
       ...s,
       state: state[s.uuid] ?? this.defaultShowState(),
       watchedEpisodeCount: s.tvdbId ? counts[s.tvdbId] ?? 0 : 0,
     }));
   });
 
+  /** As `shows`, for films — deduped against the catalog by IMDb id. */
   readonly movies = computed<MovieView[]>(() => {
     const seed = this.seedSvc.seed();
-    if (!seed) return [];
     const state = this.movieStateSig();
-    return seed.movies.map((m) => ({
+
+    const catalog = seed?.movies ?? [];
+    const known = new Set(catalog.map((m) => m.imdbId).filter(Boolean));
+    const added = Object.values(this.addedMoviesSig())
+      .filter((a) => !a.imdbId || !known.has(a.imdbId))
+      .map(addedToSeedMovie);
+
+    return [...catalog, ...added].map((m) => ({
       ...m,
       state: state[m.uuid] ?? this.defaultMovieState(),
     }));
@@ -293,6 +323,99 @@ export class LibraryStore {
   }
 
   // -------------------------------------------------------------------------
+  // Adding titles from TMDB search
+  // -------------------------------------------------------------------------
+  /** True if this TMDB title is already in the library (catalog or added). */
+  isInLibrary(kind: 'show' | 'movie', tmdbId: number): boolean {
+    return kind === 'show'
+      ? !!this.addedShowsSig()[addedKey('show', tmdbId)]
+      : !!this.addedMoviesSig()[addedKey('movie', tmdbId)];
+  }
+
+  /**
+   * Add a show found through TMDB search, and start following it.
+   *
+   * The detail fetch is what resolves the TheTVDB id that episode tracking is
+   * keyed by, so a show added without one still appears and is trackable at the
+   * show level — it just can't log individual episodes. If the fetch fails
+   * (offline, no key) we fall back to the search row rather than refusing.
+   *
+   * Returns the uuid so the caller can navigate to the new detail page.
+   */
+  async addShow(result: TmdbSearchResult): Promise<string> {
+    const detail = await this.tmdb.show(result.tmdbId).catch(() => null);
+    const uuid = addedKey('show', result.tmdbId);
+    const now = this.now();
+
+    this.docs.doc.transact(() => {
+      this.docs.addedShows.set(uuid, {
+        uuid,
+        name: detail?.name || result.name,
+        tmdbId: result.tmdbId,
+        tvdbId: detail?.tvdbId ?? null,
+        imdbId: null,
+        posterPath: detail?.posterPath ?? result.posterPath,
+        firstReleaseDate: detail?.firstAirDate ?? yearToDate(result.year),
+        overview: detail?.overview || result.overview || null,
+        genres: detail?.genres ?? [],
+        addedAt: now,
+      });
+      this.docs.showState.set(uuid, {
+        ...this.defaultShowState(),
+        status: 'watching',
+        addedAt: now,
+        updatedAt: now,
+      });
+    });
+    return uuid;
+  }
+
+  /** Add a movie found through TMDB search, onto the watchlist. */
+  async addMovie(result: TmdbSearchResult): Promise<string> {
+    const detail = await this.tmdb.movie(result.tmdbId).catch(() => null);
+    const uuid = addedKey('movie', result.tmdbId);
+    const now = this.now();
+
+    this.docs.doc.transact(() => {
+      this.docs.addedMovies.set(uuid, {
+        uuid,
+        name: detail?.title || result.name,
+        tmdbId: result.tmdbId,
+        tvdbId: null,
+        imdbId: detail?.imdbId ?? null,
+        posterPath: detail?.posterPath ?? result.posterPath,
+        firstReleaseDate: detail?.releaseDate ?? yearToDate(result.year),
+        overview: detail?.overview || result.overview || null,
+        genres: detail?.genres ?? [],
+        addedAt: now,
+      });
+      this.docs.movieState.set(uuid, {
+        ...this.defaultMovieState(),
+        watchlist: true,
+        updatedAt: now,
+      });
+    });
+    return uuid;
+  }
+
+  /**
+   * Remove a title the user added. Its watch state goes too — leaving orphaned
+   * state behind would silently resurrect the title's ratings if it were ever
+   * re-added.
+   */
+  removeAdded(kind: 'show' | 'movie', uuid: string): void {
+    this.docs.doc.transact(() => {
+      if (kind === 'show') {
+        this.docs.addedShows.delete(uuid);
+        this.docs.showState.delete(uuid);
+      } else {
+        this.docs.addedMovies.delete(uuid);
+        this.docs.movieState.delete(uuid);
+      }
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // Mutations (write straight to the CRDT; signals refresh via observers)
   // -------------------------------------------------------------------------
   setShowStatus(uuid: string, status: ShowStatus): void {
@@ -378,6 +501,48 @@ export class LibraryStore {
   }
 }
 
+/**
+ * Project a user-added title into the catalog's shape, so every downstream
+ * view model, filter and detail page treats it identically to a seeded title.
+ * Fields the backup would have supplied (network, air day, follow date) are
+ * simply absent — the UI already renders them conditionally.
+ */
+function addedToSeedShow(a: AddedTitle): SeedShow {
+  return {
+    uuid: a.uuid,
+    name: a.name,
+    tvdbId: a.tvdbId,
+    genres: a.genres ?? [],
+    firstReleaseDate: a.firstReleaseDate,
+    overview: a.overview,
+    followedAt: a.addedAt,
+    showWatchedAt: null,
+    isEnded: null,
+    dayOfWeek: null,
+    network: null,
+    country: null,
+    hashtag: null,
+    cachedPoster: tmdbPosterUrl(a.posterPath),
+    favorite: false,
+  };
+}
+
+function addedToSeedMovie(a: AddedTitle): SeedMovie {
+  return {
+    uuid: a.uuid,
+    name: a.name,
+    imdbId: a.imdbId,
+    tvdbId: null,
+    genres: a.genres ?? [],
+    firstReleaseDate: a.firstReleaseDate,
+    overview: a.overview,
+    followedAt: a.addedAt,
+    watchedAt: null,
+    favorite: false,
+    cachedPoster: tmdbPosterUrl(a.posterPath),
+  };
+}
+
 /** Avatars are stored square at this edge length — small enough to sync cheaply. */
 const AVATAR_PX = 256;
 
@@ -390,12 +555,17 @@ const AVATAR_PX = 256;
  * without leaning on the template sanitizer as the sole line of defence.
  * `null` clears the avatar; `undefined` means "no edit, fall back to the seed".
  */
+/** Widen a bare year from a search row into the ISO-ish date the models use. */
+function yearToDate(year: string | null): string | null {
+  return year ? `${year}-01-01` : null;
+}
+
 /** A usable non-negative number, or undefined so the caller can fall through. */
-function finiteOr(value: unknown): number | undefined {
+export function finiteOr(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-function safeImageSrc(value: unknown): string | null | undefined {
+export function safeImageSrc(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
   return typeof value === 'string' && value.startsWith('data:image/') ? value : null;

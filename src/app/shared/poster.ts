@@ -9,6 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { TmdbService } from '../core/tmdb.service';
+import { initialsOf } from './initials';
 
 /**
  * A poster image that resolves lazily and gracefully degrades:
@@ -22,7 +23,7 @@ import { TmdbService } from '../core/tmdb.service';
   template: `
     <div class="poster" [class.loaded]="loaded()">
       @if (src()) {
-        <img [src]="src()!" [alt]="title()" loading="lazy" (load)="loaded.set(true)" (error)="onError()" />
+        <img [src]="src()!" [alt]="title()" [attr.loading]="eager() ? 'eager' : 'lazy'" (load)="loaded.set(true)" (error)="onError()" />
       } @else {
         <div class="ph" [style.background]="gradient()">
           <span>{{ initials() }}</span>
@@ -67,6 +68,8 @@ export class Poster {
   private tmdb = inject(TmdbService);
   private el = inject(ElementRef<HTMLElement>);
 
+  /** Small always-visible thumbnails (e.g. list rows) should load eagerly. */
+  readonly eager = input(false);
   readonly title = input('');
   readonly tvdbId = input<string | null>(null);
   readonly imdbId = input<string | null>(null);
@@ -76,15 +79,7 @@ export class Poster {
   readonly loaded = signal(false);
   private resolved = false;
 
-  readonly initials = computed(() =>
-    this.title()
-      .replace(/^(the|a|an)\s+/i, '')
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((w) => w[0])
-      .join('')
-      .toUpperCase(),
-  );
+  readonly initials = computed(() => initialsOf(this.title()));
   readonly gradient = computed(() => {
     let h = 0;
     for (const c of this.title()) h = (h * 31 + c.charCodeAt(0)) % 360;

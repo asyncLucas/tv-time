@@ -1,5 +1,6 @@
-import { Injectable, computed, inject } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import { LocalConfigService } from './local-config.service';
+import { DocService } from './doc.service';
 
 export type PosterSize = 'w185' | 'w342' | 'w500' | 'original';
 
@@ -16,6 +17,17 @@ export interface TmdbShow {
   seasons: { seasonNumber: number; episodeCount: number; name: string }[];
   nextEpisode: TmdbEpisode | null;
   networks: string[];
+  /** TheTVDB series id, when TMDB knows it — episode watches are keyed by it. */
+  tvdbId: string | null;
+}
+
+/** One row of a TMDB search response — enough to render a pick-list card. */
+export interface TmdbSearchResult {
+  tmdbId: number;
+  name: string;
+  overview: string;
+  posterPath: string | null;
+  year: string | null;
 }
 
 export interface TmdbMovie {
@@ -48,8 +60,19 @@ export interface TmdbEpisode {
 
 const BASE = 'https://api.themoviedb.org/3';
 const IMG = 'https://image.tmdb.org/t/p';
+
+/**
+ * Build a TMDB image URL. Exported as a plain function because non-injectable
+ * code (the store's added-title mappers) needs it too, and it is pure.
+ */
+export function tmdbPosterUrl(path: string | null, size: PosterSize = 'w342'): string | null {
+  return path ? `${IMG}/${size}${path}` : null;
+}
 const CACHE = 'tmdb-v1';
 const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days for JSON
+/** Shorter query strings only return noise, so they never reach the API. */
+const MIN_QUERY_LENGTH = 2;
+const MAX_SEARCH_RESULTS = 20;
 
 /**
  * TMDB metadata layer. Enriches the backup at runtime: posters, season/episode
@@ -62,25 +85,85 @@ const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days for JSON
  */
 @Injectable({ providedIn: 'root' })
 export class TmdbService {
+  private docs = inject(DocService);
   private config = inject(LocalConfigService);
 
-  /** Reactive: flips on as soon as the device-local key is loaded or set. */
-  readonly hasKey = computed(() => !!this.config.tmdbKey()?.trim());
+  // The TMDB key lives in the SYNCED doc so it persists in your gist and reaches
+  // every device — set it once, posters light up everywhere. (It's your own
+  // private gist / device fleet, so syncing the key is a convenience, not a leak.)
+  private settingsSig = signal<Record<string, any>>({});
+  private migrated = false;
+
+  /** Reactive: flips on as soon as the key is loaded, set, or synced in. */
+  readonly hasKey = computed(() => !!(this.settingsSig()['tmdbKey'] as string | undefined)?.trim());
   private tmdbIdByTvdb = new Map<string, number | null>();
   private tmdbIdByImdb = new Map<string, number | null>();
 
+  constructor() {
+    const refresh = () => this.settingsSig.set(this.docs.settings.toJSON());
+    refresh();
+    this.docs.settings.observe(refresh);
+    // one-time migration of a pre-existing device-local key into the synced doc
+    effect(() => {
+      const local = this.config.tmdbKey()?.trim();
+      const synced = (this.settingsSig()['tmdbKey'] as string | undefined)?.trim();
+      if (!this.migrated && local && !synced) {
+        this.migrated = true;
+        this.docs.settings.set('tmdbKey', local);
+        this.config.delete('tmdbKey');
+      }
+    });
+  }
+
   apiKey(): string | undefined {
-    return this.config.tmdbKey()?.trim() || undefined;
+    return (this.settingsSig()['tmdbKey'] as string | undefined)?.trim() || undefined;
   }
   setKey(key: string): void {
-    this.config.set('tmdbKey', key.trim());
+    this.docs.settings.set('tmdbKey', key.trim());
   }
 
   poster(path: string | null, size: PosterSize = 'w342'): string | null {
-    return path ? `${IMG}/${size}${path}` : null;
+    return tmdbPosterUrl(path, size);
   }
   profileImg(path: string | null, size: 'w185' | 'original' = 'w185'): string | null {
     return path ? `${IMG}/${size}${path}` : null;
+  }
+
+  // -------------------------------------------------------------------------
+  // Discovery (search)
+  // -------------------------------------------------------------------------
+  /**
+   * Search TMDB for shows/movies to add to the library.
+   *
+   * Unlike the rest of this service — which resolves titles the catalog already
+   * names, by exact external id — this is the one genuinely open-ended lookup.
+   * Results are ranked by TMDB and returned as-is; the caller picks one.
+   *
+   * A blank or one-character query returns nothing rather than hitting the API,
+   * since it would only ever return noise.
+   */
+  searchShows(query: string): Promise<TmdbSearchResult[]> {
+    return this.search('tv', query);
+  }
+
+  searchMovies(query: string): Promise<TmdbSearchResult[]> {
+    return this.search('movie', query);
+  }
+
+  private async search(kind: 'tv' | 'movie', query: string): Promise<TmdbSearchResult[]> {
+    const q = query.trim();
+    if (q.length < MIN_QUERY_LENGTH) return [];
+    const data = await this.get(
+      `/search/${kind}?query=${encodeURIComponent(q)}&include_adult=false`,
+    );
+    return ((data?.results ?? []) as any[]).slice(0, MAX_SEARCH_RESULTS).map((r) => ({
+      tmdbId: r.id,
+      // /search/tv calls it `name`, /search/movie calls it `title`
+      name: r.name ?? r.title ?? '',
+      overview: r.overview ?? '',
+      posterPath: r.poster_path ?? null,
+      year: (r.first_air_date || r.release_date || '').slice(0, 4) || null,
+    }));
   }
 
   // -------------------------------------------------------------------------
@@ -120,10 +203,16 @@ export class TmdbService {
   }
 
   async show(tmdbId: number): Promise<TmdbShow | null> {
-    const d = await this.get(`/tv/${tmdbId}?append_to_response=next_episode_to_air`);
+    // external_ids rides along on the same request: adding a show from search
+    // needs its TheTVDB id, and a second round-trip for it would be wasteful.
+    const d = await this.get(
+      `/tv/${tmdbId}?append_to_response=next_episode_to_air,external_ids`,
+    );
     if (!d) return null;
     const next = d.next_episode_to_air;
+    const tvdb = d.external_ids?.tvdb_id;
     return {
+      tvdbId: tvdb ? String(tvdb) : null,
       id: d.id,
       name: d.name,
       overview: d.overview,

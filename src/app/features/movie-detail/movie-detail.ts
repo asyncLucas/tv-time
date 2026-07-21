@@ -57,9 +57,19 @@ import { Poster } from '../../shared/poster';
                 >
                   ★ {{ m.state.favorite ? 'Favorited' : 'Favorite' }}
                 </button>
-                <div class="rating">
+                <div class="rating" role="radiogroup" aria-label="Your rating out of 10">
                   @for (n of [1,2,3,4,5,6,7,8,9,10]; track n) {
-                    <span class="pip" [class.on]="(m.state.rating || 0) >= n" (click)="rate(n)">{{ n }}</span>
+                    <button
+                      type="button"
+                      class="pip"
+                      role="radio"
+                      [class.on]="(m.state.rating || 0) >= n"
+                      [attr.aria-checked]="m.state.rating === n"
+                      [attr.aria-label]="'Rate ' + n + ' out of 10'"
+                      (click)="rate(n)"
+                    >
+                      {{ n }}
+                    </button>
                   }
                 </div>
               </div>

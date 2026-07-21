@@ -2,13 +2,14 @@ import { Component, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { Poster } from '../../shared/poster';
+import { TitleSearch } from '../../shared/title-search';
 import type { MovieView } from '../../core/models';
 
 type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
 
 @Component({
   selector: 'app-movies',
-  imports: [Poster, RouterLink],
+  imports: [Poster, RouterLink, TitleSearch],
   template: `
     <div class="page">
       <div class="page-head">
@@ -32,7 +33,13 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
           @for (m of filtered(); track m.uuid) {
             <div class="card">
               <div class="pw">
-                <a [routerLink]="['/movies', m.uuid]"><app-poster [title]="m.name" [imdbId]="m.imdbId" /></a>
+                <a [routerLink]="['/movies', m.uuid]">
+                  <app-poster
+                    [title]="m.name"
+                    [imdbId]="m.imdbId"
+                    [cachedPoster]="m.cachedPoster ?? null"
+                  />
+                </a>
                 <div class="actions">
                   <button
                     class="act"
@@ -58,8 +65,13 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
           }
         </div>
       } @else {
-        <div class="empty">No movies match.</div>
+        <div class="empty">
+          No films in your library match
+          @if (q().trim()) { — search TMDB below to add one. } @else { .}
+        </div>
       }
+
+      <app-title-search kind="movie" [query]="q()" />
     </div>
   `,
   styles: [

@@ -16,9 +16,13 @@ import { Component, output, signal } from '@angular/core';
   selector: 'app-swipe-row',
   template: `
     <div class="swipe">
-      <div class="swipe-remove" (click)="remove.emit()">
-        <span class="ic">✕</span> Remove
-      </div>
+      <!--
+        Purely the backdrop revealed behind a swipe. It is not focusable and has
+        no handler of its own: the row is dragged over it, so a tap here can only
+        land once the gesture already ended. The .swipe-del button is the real
+        control, and it is reachable by keyboard.
+      -->
+      <div class="swipe-remove" aria-hidden="true"><span class="ic">✕</span> Remove</div>
       <div
         class="swipe-fg"
         role="button"
@@ -85,6 +89,20 @@ import { Component, output, signal } from '@angular/core';
         font-size: 14px;
         opacity: 0;
         transition: all 0.14s ease;
+      }
+      /*
+       * Keyboard focus must reveal the button too — it lives outside the
+       * hover-only block, or tabbing to it would focus something invisible.
+       */
+      .swipe-del:focus-visible {
+        opacity: 1;
+        outline: 2px solid var(--bad);
+        outline-offset: 1px;
+      }
+      .swipe-fg:focus-visible {
+        outline: 2px solid var(--gold);
+        outline-offset: -2px;
+        border-radius: 10px;
       }
       /* desktop affordance: reveal delete on hover (pointer devices only) */
       @media (hover: hover) {

@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { Poster } from '../../shared/poster';
 import { SwipeRow } from '../../shared/swipe-row';
+import { initialsOf } from '../../shared/initials';
 
 @Component({
   selector: 'app-lists',
@@ -43,6 +44,7 @@ import { SwipeRow } from '../../shared/swipe-row';
                             [tvdbId]="r.tvdbId"
                             [imdbId]="r.imdbId"
                             [cachedPoster]="r.cachedPoster"
+                            [eager]="true"
                           />
                           <div class="it-main">
                             <div class="it-name">{{ r.name }}</div>
@@ -80,7 +82,7 @@ import { SwipeRow } from '../../shared/swipe-row';
     `
       .lists {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
         gap: 18px;
         align-items: start;
       }
@@ -198,12 +200,6 @@ export class Lists {
   }
 
   initials(title?: string | null): string {
-    return (title ?? '?')
-      .replace(/^(the|a|an|o|as|os)\s+/i, '')
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((w) => w[0])
-      .join('')
-      .toUpperCase();
+    return initialsOf(title);
   }
 }

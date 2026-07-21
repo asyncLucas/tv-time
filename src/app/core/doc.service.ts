@@ -1,13 +1,24 @@
 import { Injectable } from '@angular/core';
 import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
-import type { Seed, ShowState, MovieState, EpisodeWatch } from './models';
+import type { Seed, ShowState, MovieState, EpisodeWatch, AddedTitle } from './models';
 
 export const DB_NAME = 'tvtime-revival';
 
 /** Stable key for an episode watch within the CRDT. */
 export function epKey(tvdbId: string, season: number, episode: number): string {
   return `${tvdbId}:${season}:${episode}`;
+}
+
+/**
+ * Stable id for a title added from TMDB search.
+ *
+ * Derived from the source id rather than random so that two devices adding the
+ * same show independently write the *same* CRDT key and converge on one entry.
+ * A random uuid would leave the user with duplicates after a sync.
+ */
+export function addedKey(kind: 'show' | 'movie', tmdbId: number): string {
+  return `tmdb:${kind}:${tmdbId}`;
 }
 
 /**
@@ -27,6 +38,10 @@ export class DocService {
   readonly episodeWatches = this.doc.getMap<EpisodeWatch>('episodeWatches');
   /** listId -> { name, description, items } */
   readonly lists = this.doc.getMap<any>('lists');
+  /** addedKey -> AddedTitle: shows the user added from TMDB search. */
+  readonly addedShows = this.doc.getMap<AddedTitle>('addedShows');
+  /** addedKey -> AddedTitle: movies the user added from TMDB search. */
+  readonly addedMovies = this.doc.getMap<AddedTitle>('addedMovies');
   /**
    * User-editable profile (name, avatar). Lives in the CRDT — not the seed —
    * so edits travel between devices. The avatar is a small downscaled data URI
@@ -34,6 +49,18 @@ export class DocService {
    * carry it for free, at the cost of a few tens of KB in the doc.
    */
   readonly profile = this.doc.getMap<any>('profile');
+  /**
+   * Synced app settings (e.g. the TMDB API key). Lives in the doc so it travels
+   * to your other devices via the gist — set the key once, posters work fleet-
+   * wide. Sync credentials (gist token, WebRTC passphrase) deliberately do NOT
+   * live here; they stay device-local in LocalConfigService.
+   *
+   * Because this map holds a credential, the two channels it travels are the
+   * deliberate ones: your own private gist and your own passphrase-encrypted
+   * WebRTC room. It is pointedly excluded from exportJson() — a backup file is
+   * something people email themselves, which is not a channel we control.
+   */
+  readonly settings = this.doc.getMap<any>('settings');
   /** bookkeeping (schema version, bootstrap flag) */
   readonly meta = this.doc.getMap<any>('meta');
 
@@ -134,6 +161,8 @@ export class DocService {
         movieState: this.movieState.toJSON(),
         episodeWatches: this.episodeWatches.toJSON(),
         lists: this.lists.toJSON(),
+        addedShows: this.addedShows.toJSON(),
+        addedMovies: this.addedMovies.toJSON(),
         profile: this.profile.toJSON(),
       },
       null,
@@ -160,6 +189,8 @@ export class DocService {
       mergeEntries(this.movieState, data.movieState);
       mergeEntries(this.episodeWatches, data.episodeWatches);
       mergeEntries(this.lists, data.lists);
+      mergeEntries(this.addedShows, data.addedShows);
+      mergeEntries(this.addedMovies, data.addedMovies);
       mergeEntries(this.profile, data.profile, { allowScalars: true });
     });
   }

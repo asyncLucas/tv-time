@@ -95,12 +95,20 @@
   display: grid;
   place-items: center;
   border-radius: 5px;
+  // reset the UA button styles that would otherwise break the 22px square
+  border: 0;
+  padding: 0;
+  font-family: inherit;
   background: var(--bg-elev-2);
   color: var(--text-faint);
   font-size: 10px;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.1s;
+}
+.rating .pip:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
 }
 .rating .pip.on {
   background: var(--gold);
