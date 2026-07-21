@@ -48,15 +48,43 @@ export class SyncService {
 
   /** The signaling server currently in use (custom override, else the default). */
   signalingUrls(): string[] {
-    const custom = this.config.get<string>('signalingUrl')?.trim();
+    const custom = (this.docs.settings.get('signalingUrl') as string | undefined)?.trim();
     return [custom || DEFAULT_SIGNALING_URL];
   }
 
-  /** If the user previously enabled sync, reconnect on launch (device-local). */
+  /**
+   * If the user previously enabled sync, reconnect on launch. Room, passphrase
+   * and signaling URL now live in the synced doc (see migrateLocalToDoc), so a
+   * device that has joined the gist converges on the fleet's sync config too.
+   */
   autoStart(): void {
-    const room = this.config.syncRoom();
-    const pass = this.config.syncPass();
+    this.migrateLocalToDoc();
+    const room = this.docs.settings.get('syncRoom') as string | undefined;
+    const pass = this.docs.settings.get('syncPass') as string | undefined;
     if (room && pass) this.connect(room, pass);
+  }
+
+  /**
+   * One-time lift of device-local sync settings into the synced doc, so existing
+   * installs keep their room/passphrase/signaling URL and then share them with
+   * the rest of the fleet through the private gist + the encrypted P2P channel.
+   * Mirrors the TMDB-key migration in TmdbService.
+   *
+   * The gist token is pointedly NOT moved: it must stay device-local because you
+   * need it to reach the gist in the first place (a copy inside the gist would be
+   * unreachable). It remains in LocalConfigService.
+   */
+  private migrateLocalToDoc(): void {
+    const keys = ['signalingUrl', 'syncRoom', 'syncPass'] as const;
+    const locals = keys.map((k) => [k, this.config.get<string>(k)] as const);
+    if (locals.every(([, v]) => v == null)) return;
+
+    this.docs.doc.transact(() => {
+      for (const [k, v] of locals) {
+        if (v != null && this.docs.settings.get(k) == null) this.docs.settings.set(k, v);
+      }
+    });
+    for (const [k, v] of locals) if (v != null) this.config.delete(k);
   }
 
   connect(room: string, password: string): void {
@@ -100,9 +128,12 @@ export class SyncService {
       this.status.set(n > 0 ? 'connected' : 'connecting');
     });
 
-    // remember for next launch — device-local, never synced to peers
-    this.config.set('syncRoom', room);
-    this.config.set('syncPass', password);
+    // Remember for next launch. Stored in the synced doc (not device-local) so
+    // the whole fleet converges on one room/passphrase; it travels only over the
+    // two trusted channels — your private gist and this passphrase-encrypted P2P
+    // room — and is still excluded from plaintext JSON exports.
+    this.docs.settings.set('syncRoom', room);
+    this.docs.settings.set('syncPass', password);
   }
 
   disconnect(): void {
@@ -121,7 +152,7 @@ export class SyncService {
 
   forget(): void {
     this.disconnect();
-    this.config.delete('syncRoom');
-    this.config.delete('syncPass');
+    this.docs.settings.delete('syncRoom');
+    this.docs.settings.delete('syncPass');
   }
 }

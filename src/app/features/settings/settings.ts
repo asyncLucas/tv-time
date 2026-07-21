@@ -391,13 +391,12 @@ export class Settings {
   private docs = inject(DocService);
 
   gist = inject(GistSyncService);
-  private config = inject(LocalConfigService);
 
   key = signal(this.tmdb.apiKey() ?? '');
   room = signal('');
   pass = signal('');
   msg = signal('');
-  signaling = signal(this.config.get<string>('signalingUrl') ?? '');
+  signaling = signal((this.docs.settings.get('signalingUrl') as string | undefined) ?? '');
   gistToken = signal('');
   readonly defaultSignaling = DEFAULT_SIGNALING_URL;
   readonly gistTokenUrl =
@@ -434,9 +433,9 @@ export class Settings {
   "lists": {
     "<list-id>": { "name": "para assistir", "items": [ { "title": "…", "uuid": "…" } ] }
   }
-  // note: credentials are intentionally NOT part of this file. Your TMDB key
-  // travels only through your own cloud sync; the gist token and P2P passphrase
-  // never leave the device at all. Set those per device under Settings.
+  // note: credentials are intentionally NOT part of this file. Your TMDB key,
+  // signaling URL and P2P room + passphrase travel only through your own cloud
+  // sync (private gist + encrypted P2P); the gist token stays on this device.
 }`;
 
   saveKey(): void {
@@ -461,8 +460,10 @@ export class Settings {
 
   saveSignaling(): void {
     const v = this.signaling().trim();
-    if (v) this.config.set('signalingUrl', v);
-    else this.config.delete('signalingUrl');
+    // Lives in the synced doc, so a custom signaling server propagates to every
+    // device through the gist (and P2P) instead of being re-entered per device.
+    if (v) this.docs.settings.set('signalingUrl', v);
+    else this.docs.settings.delete('signalingUrl');
     this.flash(v ? 'Signaling server saved — reconnect to apply.' : 'Reverted to default signaling.');
   }
 

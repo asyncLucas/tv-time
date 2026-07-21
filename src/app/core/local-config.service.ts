@@ -4,14 +4,17 @@ const DB = 'tvtime-config';
 const STORE = 'kv';
 
 /**
- * Device-local configuration — TMDB API key and sync/peer settings — persisted
- * in its own IndexedDB store.
+ * Device-local configuration, persisted in its own IndexedDB store.
  *
- * Deliberately separate from the synced Yjs document: these are per-device
- * secrets and connection settings that must NOT travel over the P2P channel
- * (broadcasting your API key, or the very passphrase that secures the sync room,
- * to every peer would be a security smell). They persist across reloads but stay
- * on this device only.
+ * The gist token is the one setting that must live here: you need it to reach
+ * the gist, so it cannot be stored inside the synced doc (a copy in the gist
+ * would be unreachable) and it must never travel over the P2P channel.
+ *
+ * Historically the TMDB key, signaling URL and sync room/passphrase also lived
+ * here; they have since moved into the synced doc (DocService.settings) so the
+ * whole fleet converges on one configuration. SyncService.migrateLocalToDoc()
+ * lifts any leftover values on launch, after which the `syncRoom`/`syncPass`
+ * accessors below only serve that one-time migration.
  */
 @Injectable({ providedIn: 'root' })
 export class LocalConfigService {

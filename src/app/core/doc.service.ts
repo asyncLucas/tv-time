@@ -61,15 +61,17 @@ export class DocService {
    */
   readonly profile = this.doc.getMap<any>('profile');
   /**
-   * Synced app settings (e.g. the TMDB API key). Lives in the doc so it travels
-   * to your other devices via the gist — set the key once, posters work fleet-
-   * wide. Sync credentials (gist token, WebRTC passphrase) deliberately do NOT
-   * live here; they stay device-local in LocalConfigService.
+   * Synced app settings: the TMDB API key, the WebRTC signaling URL, and the P2P
+   * sync room + passphrase. Lives in the doc so it travels to your other devices
+   * — set it once and the whole fleet converges. The one credential that stays
+   * device-local is the gist token, in LocalConfigService: you need it to reach
+   * the gist, so a copy inside the gist would be unreachable.
    *
-   * Because this map holds a credential, the two channels it travels are the
-   * deliberate ones: your own private gist and your own passphrase-encrypted
-   * WebRTC room. It is pointedly excluded from exportJson() — a backup file is
-   * something people email themselves, which is not a channel we control.
+   * Because this map holds credentials (the sync passphrase in particular), the
+   * only two channels it travels are the deliberate, trusted ones: your own
+   * private gist and your own passphrase-encrypted WebRTC room. It is pointedly
+   * excluded from exportJson() — a backup file is something people email
+   * themselves, which is not a channel we control.
    */
   readonly settings = this.doc.getMap<any>('settings');
   /** bookkeeping (schema version, bootstrap flag) */
@@ -158,9 +160,10 @@ export class DocService {
   /**
    * Serialize the whole user-state doc to a portable JSON blob (export/backup).
    *
-   * Device-local config (TMDB key, sync room + passphrase, gist token) lives in
-   * LocalConfigService and is deliberately absent here — a backup file is
-   * something people email themselves, so it must never carry credentials.
+   * Synced settings (TMDB key, signaling URL, sync room + passphrase) live in
+   * the `settings` map and the gist token stays in LocalConfigService — all are
+   * deliberately absent here — a backup file is something people email
+   * themselves, so it must never carry credentials.
    */
   exportJson(): string {
     return JSON.stringify(
