@@ -89,25 +89,15 @@
   filter: brightness(1.15);
 }
 
-/* "In library" toggle — occupies the same slot as "Add to library"; hovering
-   reveals its remove action so the button reads as an on/off control. */
-.btn.in-lib {
+/* The single "saved" control: one button standing in for library membership,
+   watchlist and list membership, all of which it opens a menu to change. */
+.btn.saved {
   background: rgba(74, 194, 107, 0.14);
   border-color: transparent;
   color: #4ac26b;
 }
-.btn.in-lib .lbl-out {
-  display: none;
-}
-.btn.in-lib:hover {
-  background: rgba(248, 81, 73, 0.16);
-  color: #f85149;
-}
-.btn.in-lib:hover .lbl-in {
-  display: none;
-}
-.btn.in-lib:hover .lbl-out {
-  display: inline;
+.btn.saved:hover {
+  background: rgba(74, 194, 107, 0.22);
 }
 
 /* Add-to-list dropdown, shared by the preview and in-library control rows. */
@@ -171,6 +161,15 @@
 }
 .lm-row:hover {
   background: var(--bg-elev-2);
+}
+.lm-row.danger {
+  color: #f85149;
+}
+.lm-row.danger .lm-check {
+  color: inherit;
+}
+.lm-row.danger:hover {
+  background: rgba(248, 81, 73, 0.14);
 }
 .lm-check {
   width: 14px;

@@ -85,11 +85,6 @@ import { stremioUrl } from '../../shared/stremio';
                     <ng-container [ngTemplateOutlet]="listPanel" />
                   </div>
                 } @else {
-                  @if (isAdded()) {
-                    <button class="btn in-lib" (click)="removing.set(true)" title="Remove from library">
-                      <span class="lbl-in">✓ In library</span><span class="lbl-out">✕ Remove</span>
-                    </button>
-                  }
                   <button
                     class="btn"
                     [class.primary]="m.state.watched"
@@ -99,18 +94,12 @@ import { stremioUrl } from '../../shared/stremio';
                   </button>
                   <button
                     class="btn"
-                    [class.primary]="m.state.watchlist"
-                    (click)="store.toggleMovieWatchlist(m.uuid)"
-                  >
-                    + {{ m.state.watchlist ? 'On watchlist' : 'Watchlist' }}
-                  </button>
-                  <button
-                    class="btn"
                     [class.primary]="m.state.favorite"
                     (click)="store.toggleMovieFavorite(m.uuid)"
                   >
                     ★ {{ m.state.favorite ? 'Favorited' : 'Favorite' }}
                   </button>
+                  <ng-container [ngTemplateOutlet]="listControl" />
                   <div class="rating" role="radiogroup" aria-label="Your rating out of 10">
                     @for (n of [1,2,3,4,5,6,7,8,9,10]; track n) {
                       <button
@@ -126,7 +115,6 @@ import { stremioUrl } from '../../shared/stremio';
                       </button>
                     }
                   </div>
-                  <ng-container [ngTemplateOutlet]="listControl" />
                 }
               </div>
 
@@ -185,12 +173,11 @@ import { stremioUrl } from '../../shared/stremio';
     <ng-template #listControl>
       <div class="list-menu">
         <button
-          class="btn"
-          [class.primary]="listMenuOpen()"
+          class="btn saved"
           [attr.aria-expanded]="listMenuOpen()"
           (click)="listMenuOpen.set(!listMenuOpen())"
         >
-          ＋ List ▾
+          {{ savedLabel() }} ▾
         </button>
         <ng-container [ngTemplateOutlet]="listPanel" />
       </div>
@@ -200,6 +187,22 @@ import { stremioUrl } from '../../shared/stremio';
       @if (listMenuOpen()) {
           <div class="lm-backdrop" (click)="listMenuOpen.set(false)"></div>
           <div class="lm-panel" role="menu">
+            <!-- Marking a film watched clears its watchlist flag in the store, so
+                 the row would only ever read "off" here — hide it while watched
+                 rather than offering a toggle that contradicts the state. -->
+            @if (!movie()?.state?.watched) {
+              <button
+                class="lm-row"
+                type="button"
+                role="menuitemcheckbox"
+                [attr.aria-checked]="movie()?.state?.watchlist ?? false"
+                (click)="toggleWatchlist()"
+              >
+                <span class="lm-check">{{ movie()?.state?.watchlist ? '✓' : '' }}</span>
+                <span class="lm-name">Watchlist</span>
+              </button>
+              <div class="lm-sep"></div>
+            }
             @if (store.lists().length) {
               @for (l of store.lists(); track l.id) {
                 <button
@@ -226,6 +229,18 @@ import { stremioUrl } from '../../shared/stremio';
               />
               <button class="btn sm" type="submit" [disabled]="!newListName().trim()">Add</button>
             </form>
+            @if (isAdded()) {
+              <div class="lm-sep"></div>
+              <button
+                class="lm-row danger"
+                type="button"
+                role="menuitem"
+                (click)="listMenuOpen.set(false); removing.set(true)"
+              >
+                <span class="lm-check">✕</span>
+                <span class="lm-name">Remove from library</span>
+              </button>
+            }
           </div>
       }
     </ng-template>
@@ -358,6 +373,31 @@ export class MovieDetail {
     } finally {
       this.adding.set(false);
     }
+  }
+
+  /** How many custom lists this film currently belongs to. */
+  private readonly listCount = computed(
+    () => this.store.lists().filter((l) => this.store.isInList(l.id, this.uuid())).length,
+  );
+
+  /**
+   * One label summarising everywhere this film is saved, so the single control
+   * reads back its own state: watchlist and list membership before the plain
+   * "Saved" fallback it always has by virtue of being in the library.
+   */
+  readonly savedLabel = computed(() => {
+    const onWatchlist = this.movie()?.state.watchlist ?? false;
+    const lists = this.listCount();
+    if (onWatchlist && lists) return `✓ Watchlist +${lists}`;
+    if (onWatchlist) return '✓ Watchlist';
+    if (lists) return `✓ In ${lists} list${lists > 1 ? 's' : ''}`;
+    return '✓ Saved';
+  });
+
+  /** Toggle the watchlist flag, adding a previewed film to the library first. */
+  async toggleWatchlist(): Promise<void> {
+    await this.ensureInLibrary();
+    this.store.toggleMovieWatchlist(this.uuid());
   }
 
   rate(n: number): void {
