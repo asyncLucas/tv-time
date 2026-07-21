@@ -1,4 +1,4 @@
-import { Component, computed, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal, type WritableSignal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { formatDuration } from '../../shared/duration';
@@ -11,7 +11,24 @@ import { YearPipe } from '../../shared/year';
   template: `
     <div class="page">
       @if (store.profile(); as p) {
-        <div class="head">
+        <div class="banner" [class.empty]="!p.banner">
+          @if (p.banner) {
+            <img class="banner-img" [src]="p.banner" alt="" />
+          }
+          <div class="banner-actions">
+            <button class="banner-btn" (click)="bannerPicker.click()" [disabled]="bannerBusy()">
+              {{ bannerBusy() ? 'Working…' : p.banner ? 'Change cover' : 'Add a cover' }}
+            </button>
+            @if (p.banner) {
+              <button class="banner-btn" (click)="store.clearProfileBanner()" [disabled]="bannerBusy()">
+                Remove
+              </button>
+            }
+          </div>
+        </div>
+        <input #bannerPicker type="file" accept="image/*" hidden (change)="onPickBanner($event)" />
+
+        <div class="head" [class.over-banner]="!!p.banner">
           <button class="avatar-btn" (click)="picker.click()" [disabled]="busy()"
                   [title]="photo() ? 'Change picture' : 'Add a picture'">
             @if (photo(); as img) {
@@ -127,11 +144,74 @@ import { YearPipe } from '../../shared/year';
   `,
   styles: [
     `
+      /* Cover photo. Sits inside the page padding rather than bleeding to the
+         window edge — the sidebar layout has no full-bleed slot, and a rounded
+         card reads as deliberate where a clipped full-bleed strip would not. */
+      .banner {
+        position: relative;
+        height: 200px;
+        border-radius: var(--radius);
+        overflow: hidden;
+        background: var(--bg-elev);
+      }
+      .banner.empty {
+        border: 1px dashed var(--line);
+        background: linear-gradient(120deg, var(--bg-elev) 0%, var(--bg-elev-2) 100%);
+      }
+      .banner-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      .banner-actions {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        display: flex;
+        gap: 8px;
+      }
+      .banner-btn {
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        color: #fff;
+        border-radius: 999px;
+        padding: 6px 14px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .banner-btn:hover:not(:disabled) {
+        background: rgba(0, 0, 0, 0.8);
+      }
+      .banner-btn:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
       .head {
         display: flex;
         align-items: center;
         gap: 18px;
-        margin-bottom: 32px;
+        margin: 20px 0 32px;
+      }
+      /* With a cover above it, the avatar rides up over the seam — the standard
+         profile-header overlap. Without one there is nothing to overlap.
+         Only the avatar is pulled up: the name and byline stay clear of the
+         image, where they are legible over any cover the user picks. */
+      .head.over-banner {
+        align-items: flex-end;
+      }
+      .head.over-banner .avatar-btn {
+        margin: -52px 0 0 24px;
+        /* .banner is positioned, so it paints over static siblings — without a
+           stacking context of its own the avatar would slide behind the cover. */
+        position: relative;
+        z-index: 1;
+      }
+      .head.over-banner .avatar {
+        border-width: 3px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
       }
       .avatar {
         width: 72px;
@@ -345,6 +425,8 @@ export class Profile {
 
   editing = signal(false);
   busy = signal(false);
+  /** Tracked separately from `busy` so picking a cover doesn't disable the avatar. */
+  bannerBusy = signal(false);
   error = signal<string | null>(null);
 
   /**
@@ -372,18 +454,31 @@ export class Profile {
   }
 
   async onPick(event: Event): Promise<void> {
+    await this.pick(event, this.busy, (f) => this.store.setProfileImage(f));
+  }
+
+  async onPickBanner(event: Event): Promise<void> {
+    await this.pick(event, this.bannerBusy, (f) => this.store.setProfileBanner(f));
+  }
+
+  /** Shared plumbing for the two pickers: guard, run, surface the failure. */
+  private async pick(
+    event: Event,
+    busy: WritableSignal<boolean>,
+    apply: (file: File) => Promise<void>,
+  ): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     input.value = ''; // let the same file be re-picked after an error
     if (!file) return;
-    this.busy.set(true);
+    busy.set(true);
     this.error.set(null);
     try {
-      await this.store.setProfileImage(file);
+      await apply(file);
     } catch (e: any) {
       this.error.set(String(e?.message ?? e));
     } finally {
-      this.busy.set(false);
+      busy.set(false);
     }
   }
 

@@ -353,6 +353,9 @@ export class LibraryStore {
       ...(seed ?? EMPTY_PROFILE),
       ...(name !== undefined ? { name } : {}),
       ...(image !== undefined ? { image } : {}),
+      // Unlike the avatar, a banner has no seed counterpart — TV Time never had
+      // one — so it is purely an edit, and absent simply means "none set".
+      banner: safeImageSrc(edits['banner']) ?? null,
     };
   });
 
@@ -370,7 +373,7 @@ export class LibraryStore {
    * payload, so keeping it tiny matters more than keeping it sharp.
    */
   async setProfileImage(file: File): Promise<void> {
-    const dataUri = await downscaleToDataUri(file, AVATAR_PX);
+    const dataUri = await downscaleToDataUri(file, AVATAR_PX, AVATAR_PX, 0.85);
     this.docs.profile.set('image', dataUri);
     this.docs.profile.set('updatedAt', this.now());
   }
@@ -378,6 +381,23 @@ export class LibraryStore {
   /** Drop the custom avatar (falls back to the seed's, if any). */
   clearProfileImage(): void {
     this.docs.profile.delete('image');
+    this.docs.profile.set('updatedAt', this.now());
+  }
+
+  /**
+   * Set the profile banner from a picked file. Same one-way trip as the avatar
+   * — cropped and re-encoded here, stored as a data URI, synced to your other
+   * devices — just wider and a little more compressed (see BANNER_W).
+   */
+  async setProfileBanner(file: File): Promise<void> {
+    const dataUri = await downscaleToDataUri(file, BANNER_W, BANNER_H, BANNER_QUALITY);
+    this.docs.profile.set('banner', dataUri);
+    this.docs.profile.set('updatedAt', this.now());
+  }
+
+  /** Remove the banner, returning the profile header to its plain state. */
+  clearProfileBanner(): void {
+    this.docs.profile.delete('banner');
     this.docs.profile.set('updatedAt', this.now());
   }
 
@@ -692,6 +712,15 @@ function addedToSeedMovie(a: AddedTitle): SeedMovie {
 
 /** Avatars are stored square at this edge length — small enough to sync cheaply. */
 const AVATAR_PX = 256;
+/**
+ * Banner dimensions and JPEG quality. Deliberately modest: like the avatar this
+ * lives in the CRDT, so it rides along in every sync payload to every device.
+ * 1024×341 at 0.78 lands around 60-90 KB — wide enough to look sharp on a
+ * laptop, small enough not to dominate the gist.
+ */
+const BANNER_W = 1024;
+const BANNER_H = 341;
+const BANNER_QUALITY = 0.78;
 
 /**
  * Watch-time pricing for titles whose real runtime we don't have. Episode
@@ -761,30 +790,46 @@ const EMPTY_PROFILE = {
 };
 
 /**
- * Center-crop an image file to a square and re-encode it as a JPEG data URI.
- * Runs entirely in-browser (no upload target exists — the app has no backend).
+ * Center-crop an image file to `width`×`height` and re-encode it as a JPEG data
+ * URI. Runs entirely in-browser (no upload target exists — the app has no
+ * backend).
+ *
+ * The crop takes the largest region of the source matching the target aspect,
+ * so a portrait photo used as a banner keeps its middle band rather than being
+ * squashed.
  */
-async function downscaleToDataUri(file: File, size: number): Promise<string> {
+async function downscaleToDataUri(
+  file: File,
+  width: number,
+  height: number,
+  quality: number,
+): Promise<string> {
   if (!file.type.startsWith('image/')) throw new Error('That file is not an image.');
   const bitmap = await createImageBitmap(file);
   try {
     const canvas = document.createElement('canvas');
-    canvas.width = canvas.height = size;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Could not process the image on this device.');
-    const edge = Math.min(bitmap.width, bitmap.height);
+
+    const targetAspect = width / height;
+    const srcAspect = bitmap.width / bitmap.height;
+    // Too wide for the target → trim the sides; too tall → trim top and bottom.
+    const cropW = srcAspect > targetAspect ? bitmap.height * targetAspect : bitmap.width;
+    const cropH = srcAspect > targetAspect ? bitmap.height : bitmap.width / targetAspect;
     ctx.drawImage(
       bitmap,
-      (bitmap.width - edge) / 2,
-      (bitmap.height - edge) / 2,
-      edge,
-      edge,
+      (bitmap.width - cropW) / 2,
+      (bitmap.height - cropH) / 2,
+      cropW,
+      cropH,
       0,
       0,
-      size,
-      size,
+      width,
+      height,
     );
-    return canvas.toDataURL('image/jpeg', 0.85);
+    return canvas.toDataURL('image/jpeg', quality);
   } finally {
     bitmap.close();
   }
