@@ -54,30 +54,30 @@ import { YearPipe } from '../../shared/year';
           <div class="tile big gold">
             <div class="n">{{ lifetime() }}</div>
             <div class="l">
-              watched (lifetime)
+              tv time
               @if (hours()) { · {{ hours() }} hours }
             </div>
           </div>
-          <div class="tile">
+          <a class="tile" routerLink="/shows">
             <div class="n">{{ s().showsFollowed }}</div>
             <div class="l">shows followed</div>
-          </div>
-          <div class="tile">
+          </a>
+          <a class="tile" routerLink="/shows">
             <div class="n">{{ s().showsCompleted }}</div>
             <div class="l">shows completed</div>
-          </div>
-          <div class="tile">
+          </a>
+          <a class="tile" routerLink="/movies">
             <div class="n">{{ s().moviesWatched }}</div>
             <div class="l">movies watched</div>
-          </div>
+          </a>
           <div class="tile">
             <div class="n">{{ s().episodesWatched }}</div>
             <div class="l">episodes logged</div>
           </div>
-          <div class="tile">
+          <a class="tile" routerLink="/shows">
             <div class="n">{{ s().showsFavorite }}</div>
             <div class="l">favorite shows</div>
-          </div>
+          </a>
         </div>
 
         @if (favShows().length) {
@@ -229,6 +229,13 @@ import { YearPipe } from '../../shared/year';
         border: 1px solid var(--line);
         border-radius: var(--radius);
         padding: 20px;
+        display: block;
+        color: inherit;
+      }
+      /* Tiles that lead somewhere pick up the same hover the Up Next cards
+         used to have. The rest are figures with nowhere to go. */
+      a.tile:hover {
+        border-color: #3a3f4a;
       }
       .tile.big {
         grid-column: span 2;

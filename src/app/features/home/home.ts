@@ -14,7 +14,6 @@ import { TmdbService, TmdbShow } from '../../core/tmdb.service';
 import { Poster } from '../../shared/poster';
 import { SwipeRow } from '../../shared/swipe-row';
 import { TimeLeftPipe } from '../../shared/time-left';
-import { formatDuration } from '../../shared/duration';
 import type { ShowView } from '../../core/models';
 
 interface UpNext {
@@ -54,25 +53,6 @@ interface NextEpisode {
           } @else {
             Import a TV Time backup or add titles to start tracking.
           }
-        </div>
-      </div>
-
-      <div class="stats">
-        <a class="stat" routerLink="/shows">
-          <div class="n">{{ store.stats().showsFollowed }}</div>
-          <div class="l">Shows</div>
-        </a>
-        <a class="stat" routerLink="/movies">
-          <div class="n">{{ store.stats().moviesWatched }}</div>
-          <div class="l">Movies watched</div>
-        </a>
-        <div class="stat">
-          <div class="n">{{ store.stats().episodesWatched }}</div>
-          <div class="l">Episodes logged</div>
-        </div>
-        <div class="stat gold">
-          <div class="n">{{ lifetime() }}</div>
-          <div class="l">Lifetime watched</div>
         </div>
       </div>
 
@@ -250,8 +230,6 @@ export class Home {
     rows.sort((a, b) => (rank.get(a.tvdbId) ?? rank.size) - (rank.get(b.tvdbId) ?? rank.size));
     return rows.slice(0, MAX_NEXT_UP);
   });
-
-  readonly lifetime = computed(() => formatDuration(this.store.stats().lifetimeMinutes));
 
   /**
    * Identifies the newest resolve pass. The effect below re-fires on every
