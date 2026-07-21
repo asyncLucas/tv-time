@@ -1,9 +1,21 @@
-import { Component, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 
 /**
- * A row that opens on tap/click and can be removed by swiping left (touch) or
- * clicking the delete button (desktop hover). Emits `open` for a tap and
- * `remove` for a swipe-past-threshold or delete click.
+ * A row that opens on tap/click and fires a confirmable action when swiped
+ * (touch) or when its button is clicked (desktop hover). Emits `open` for a tap
+ * and `confirm` for a swipe-past-threshold or button click.
+ *
+ * The action is configurable because two very different gestures share this
+ * shell: swipe *left* on a red backdrop to remove a list item, swipe *right* on
+ * a green one to mark an episode watched. Direction is not cosmetic — a
+ * destructive action and an additive one should not feel like the same motion.
  *
  * Tap vs. swipe is disambiguated by horizontal travel: a real drag suppresses
  * the synthesized click so a swipe never accidentally opens the item.
@@ -19,10 +31,13 @@ import { Component, output, signal } from '@angular/core';
       <!--
         Purely the backdrop revealed behind a swipe. It is not focusable and has
         no handler of its own: the row is dragged over it, so a tap here can only
-        land once the gesture already ended. The .swipe-del button is the real
+        land once the gesture already ended. The .swipe-btn button is the real
         control, and it is reachable by keyboard.
       -->
-      <div class="swipe-remove" aria-hidden="true"><span class="ic">✕</span> Remove</div>
+      <div class="swipe-action" [class.right]="direction() === 'right'" [class.good]="tone() === 'good'"
+           aria-hidden="true">
+        <span class="ic">{{ icon() }}</span> {{ label() }}
+      </div>
       <div
         class="swipe-fg"
         role="button"
@@ -38,7 +53,10 @@ import { Component, output, signal } from '@angular/core';
         (keydown.space)="open.emit()"
       >
         <ng-content />
-        <button class="swipe-del" (click)="onDelete($event)" aria-label="Remove from list">✕</button>
+        @if (!disabled()) {
+          <button class="swipe-btn" [class.good]="tone() === 'good'" (click)="onAction($event)"
+                  [attr.aria-label]="buttonLabel() || label()">{{ icon() }}</button>
+        }
       </div>
     </div>
   `,
@@ -49,7 +67,7 @@ import { Component, output, signal } from '@angular/core';
         overflow: hidden;
         border-radius: 10px;
       }
-      .swipe-remove {
+      .swipe-action {
         position: absolute;
         inset: 0;
         display: flex;
@@ -63,7 +81,16 @@ import { Component, output, signal } from '@angular/core';
         font-weight: 800;
         cursor: pointer;
       }
-      .swipe-remove .ic {
+      /* A right swipe drags the row rightward, so its backdrop is revealed on
+         the left — the label has to follow the reveal, not sit off-screen. */
+      .swipe-action.right {
+        justify-content: flex-start;
+      }
+      .swipe-action.good {
+        background: var(--good);
+        color: #06281d;
+      }
+      .swipe-action .ic {
         font-size: 14px;
       }
       .swipe-fg {
@@ -75,7 +102,7 @@ import { Component, output, signal } from '@angular/core';
       .swipe-fg.snap {
         transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
       }
-      .swipe-del {
+      .swipe-btn {
         position: absolute;
         top: 50%;
         right: 10px;
@@ -94,32 +121,52 @@ import { Component, output, signal } from '@angular/core';
        * Keyboard focus must reveal the button too — it lives outside the
        * hover-only block, or tabbing to it would focus something invisible.
        */
-      .swipe-del:focus-visible {
+      .swipe-btn:focus-visible {
         opacity: 1;
         outline: 2px solid var(--bad);
         outline-offset: 1px;
+      }
+      .swipe-btn.good:focus-visible {
+        outline-color: var(--good);
       }
       .swipe-fg:focus-visible {
         outline: 2px solid var(--gold);
         outline-offset: -2px;
         border-radius: 10px;
       }
-      /* desktop affordance: reveal delete on hover (pointer devices only) */
+      /* desktop affordance: reveal the button on hover (pointer devices only) */
       @media (hover: hover) {
-        .swipe-fg:hover .swipe-del {
+        .swipe-fg:hover .swipe-btn {
           opacity: 1;
         }
-        .swipe-del:hover {
+        .swipe-btn:hover {
           background: var(--bad);
           color: #2a0a0a;
+        }
+        .swipe-btn.good:hover {
+          background: var(--good);
+          color: #06281d;
         }
       }
     `,
   ],
+  // State is all signals/inputs, and touchmove fires at frame rate — OnPush
+  // keeps a drag from change-detecting every other row in the list.
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SwipeRow {
+  /** Which way the row travels. 'left' reads as destructive, 'right' as additive. */
+  readonly direction = input<'left' | 'right'>('left');
+  readonly tone = input<'bad' | 'good'>('bad');
+  readonly label = input('Remove');
+  readonly icon = input('✕');
+  /** Accessible name for the button; falls back to `label`. */
+  readonly buttonLabel = input('');
+  /** Inert: the row still opens on tap, but the action can't be triggered. */
+  readonly disabled = input(false);
+
   readonly open = output<void>();
-  readonly remove = output<void>();
+  readonly confirm = output<void>();
 
   readonly dx = signal(0);
   readonly snap = signal(false);
@@ -129,9 +176,13 @@ export class SwipeRow {
   private dragging = false;
   private moved = false;
   private readonly MAX = 96; // px of reveal
-  private readonly THRESHOLD = 64; // swipe past this → remove
+  private readonly THRESHOLD = 64; // swipe past this → confirm
+
+  /** +1 when the row travels right, -1 when it travels left. */
+  private readonly sign = computed(() => (this.direction() === 'right' ? 1 : -1));
 
   onStart(e: TouchEvent): void {
+    if (this.disabled()) return;
     this.startX = e.touches[0].clientX;
     this.startY = e.touches[0].clientY;
     this.dragging = true;
@@ -149,16 +200,18 @@ export class SwipeRow {
       return;
     }
     if (Math.abs(dx) > 6) this.moved = true;
-    this.dx.set(Math.max(-this.MAX, Math.min(0, dx)));
+    // Travel only in the configured direction; the opposite way is pinned to 0.
+    const travel = Math.min(this.MAX, Math.max(0, dx * this.sign()));
+    this.dx.set(travel * this.sign());
   }
 
   onEnd(): void {
     if (!this.dragging) return;
     this.dragging = false;
     this.snap.set(true);
-    if (this.dx() <= -this.THRESHOLD) {
-      this.dx.set(-this.MAX);
-      this.remove.emit();
+    if (this.dx() * this.sign() >= this.THRESHOLD) {
+      this.dx.set(this.MAX * this.sign());
+      this.confirm.emit();
     } else {
       this.dx.set(0);
     }
@@ -166,7 +219,7 @@ export class SwipeRow {
 
   /**
    * The browser took the gesture over (usually to scroll). Snap back rather
-   * than reusing onEnd — a cancelled swipe must never count as a removal.
+   * than reusing onEnd — a cancelled swipe must never count as a confirmation.
    */
   onCancel(): void {
     this.dragging = false;
@@ -182,8 +235,15 @@ export class SwipeRow {
     this.open.emit();
   }
 
-  onDelete(e: Event): void {
+  onAction(e: Event): void {
     e.stopPropagation();
-    this.remove.emit();
+    if (this.disabled()) return;
+    this.confirm.emit();
+  }
+
+  /** Snap the row back to rest — for a caller whose row survives the action. */
+  reset(): void {
+    this.snap.set(true);
+    this.dx.set(0);
   }
 }

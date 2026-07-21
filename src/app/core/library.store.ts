@@ -166,6 +166,27 @@ export class LibraryStore {
     return latest;
   });
 
+  /**
+   * The furthest-along watched episode per show TVDB id — the anchor "what's
+   * next" counts forward from.
+   *
+   * Furthest, deliberately, not most-recent-by-date: re-watching an old episode
+   * shouldn't rewind your position, and a backup's `watchedAt` timestamps are
+   * only as trustworthy as the service that wrote them. Season then episode
+   * compare numerically (an episode key sorts as a string, so a plain max over
+   * the keys would put S10 before S9).
+   */
+  readonly furthestWatchedByTvdb = computed(() => {
+    const furthest: Record<string, { season: number; episode: number }> = {};
+    for (const w of Object.values(this.episodeWatchesSig())) {
+      const cur = furthest[w.tvdbId];
+      if (!cur || w.season > cur.season || (w.season === cur.season && w.episode > cur.episode)) {
+        furthest[w.tvdbId] = { season: w.season, episode: w.episode };
+      }
+    }
+    return furthest;
+  });
+
   /** Episode-watch count per `${tvdbId}:${season}` — backs watchedInSeason(). */
   private watchedCountBySeason = computed(() => {
     const counts: Record<string, number> = {};

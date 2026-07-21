@@ -69,7 +69,11 @@ interface ListItem {
               @if (list.items?.length) {
                 <div class="items">
                   @for (item of visible(list); track item.uuid || item.title) {
-                    <app-swipe-row (open)="openItem(item)" (remove)="store.removeListItem(list.id, item)">
+                    <app-swipe-row
+                      buttonLabel="Remove from list"
+                      (open)="openItem(item)"
+                      (confirm)="store.removeListItem(list.id, item)"
+                    >
                       @if (store.resolveListItem(item); as r) {
                         <div class="item">
                           <app-poster
