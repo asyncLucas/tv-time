@@ -7,11 +7,18 @@ import { LibraryStore } from '../../core/library.store';
     <div class="page">
       @if (store.profile(); as p) {
         <div class="head">
-          @if (p.image) { <img class="avatar" [src]="p.image" [alt]="p.name" /> }
-          <div>
-            <h1>{{ p.name }}</h1>
-            <div class="sub">&#64;{{ p.login }} · member since {{ p.createdAt?.slice(0, 4) }} · {{ p.timezone }}</div>
-          </div>
+          @if (p.name) {
+            @if (p.image) { <img class="avatar" [src]="p.image" [alt]="p.name" /> }
+            <div>
+              <h1>{{ p.name }}</h1>
+              <div class="sub">&#64;{{ p.login }} · member since {{ p.createdAt?.slice(0, 4) }} · {{ p.timezone }}</div>
+            </div>
+          } @else {
+            <div>
+              <h1>Your stats</h1>
+              <div class="sub">Local-first — no account, no profile. Everything below is just yours.</div>
+            </div>
+          }
         </div>
 
         <div class="grid">

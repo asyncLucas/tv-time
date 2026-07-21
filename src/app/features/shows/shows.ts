@@ -14,7 +14,7 @@ type Filter = 'all' | 'watching' | 'completed' | 'watchlist' | 'favorites';
       <div class="page-head">
         <div>
           <h1>Shows</h1>
-          <div class="sub">{{ filtered().length }} of {{ store.shows().length }} tracked series</div>
+          <div class="sub">{{ filtered().length }} of {{ store.shows().length }} series in the catalog</div>
         </div>
         <input class="search" placeholder="Search shows…" [value]="q()" (input)="q.set($any($event.target).value)" />
       </div>
@@ -36,7 +36,9 @@ type Filter = 'all' | 'watching' | 'completed' | 'watchlist' | 'favorites';
                 <div class="name">{{ s.name }}</div>
                 <div class="row">
                   @if (s.state.favorite) { <span class="star">★</span> }
-                  <span class="status s-{{ s.state.status }}">{{ label(s.state.status) }}</span>
+                  @if (s.state.status !== 'none') {
+                    <span class="status s-{{ s.state.status }}">{{ label(s.state.status) }}</span>
+                  }
                 </div>
               </div>
             </a>

@@ -40,9 +40,11 @@ export class LibraryStore {
     if (this.started) return;
     this.started = true;
 
-    const seed = await this.seedSvc.load();
+    // Load the catalog (browse content). We do NOT bootstrap user state from it
+    // — the catalog is shared/anonymous; each person builds their own library.
+    // Personal state is only ever seeded by an explicit backup import.
+    await this.seedSvc.load();
     await this.docs.whenReady();
-    if (seed) this.docs.bootstrapFromSeed(seed);
 
     this.bind(this.docs.showState, this.showStateSig);
     this.bind(this.docs.movieState, this.movieStateSig);
@@ -118,7 +120,7 @@ export class LibraryStore {
     const state = this.movieStateSig();
     return seed.movies.map((m) => ({
       ...m,
-      state: state[m.uuid] ?? this.defaultMovieState(m),
+      state: state[m.uuid] ?? this.defaultMovieState(),
     }));
   });
 
@@ -140,10 +142,11 @@ export class LibraryStore {
     const movies = this.movies();
     const episodeWatches = Object.values(this.episodeWatchesSig());
     return {
-      showsFollowed: shows.length,
+      // "my library" = titles the user has actually added, not the whole catalog
+      showsFollowed: shows.filter((s) => s.state.status !== 'none').length,
       showsCompleted: shows.filter((s) => s.state.status === 'completed').length,
       showsFavorite: shows.filter((s) => s.state.favorite).length,
-      moviesTracked: movies.length,
+      moviesTracked: movies.filter((m) => m.state.watched || m.state.watchlist || m.state.favorite).length,
       moviesWatched: movies.filter((m) => m.state.watched).length,
       episodesWatched: episodeWatches.length,
       // seed-provided lifetime stats from TV Time
@@ -252,14 +255,8 @@ export class LibraryStore {
   private defaultShowState(): ShowState {
     return { status: 'none', favorite: false, rating: null, addedAt: null, updatedAt: null };
   }
-  private defaultMovieState(seed?: { watchedAt: string | null; favorite: boolean }): MovieState {
-    return {
-      watched: !!seed?.watchedAt,
-      watchedAt: seed?.watchedAt ?? null,
-      watchlist: !seed?.watchedAt,
-      favorite: !!seed?.favorite,
-      rating: null,
-      updatedAt: null,
-    };
+  /** Neutral: a catalog title is "not in my library" until the user adds it. */
+  private defaultMovieState(): MovieState {
+    return { watched: false, watchedAt: null, watchlist: false, favorite: false, rating: null, updatedAt: null };
   }
 }

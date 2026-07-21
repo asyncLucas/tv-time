@@ -30,18 +30,35 @@ export class SeedService {
   private db?: IDBDatabase;
   private loading?: Promise<Seed | null>;
 
-  /** Load the locally-stored catalog, if any. Null means "needs onboarding". */
+  /**
+   * Load this device's catalog. Prefers a personal backup the user imported
+   * (stored in IndexedDB); otherwise falls back to the bundled, sanitized
+   * catalog.json that ships with the app — the shared, browsable content
+   * database. Either way the app has content to show; nothing is user-linked.
+   */
   load(): Promise<Seed | null> {
     if (!this.loading) {
       this.loading = this.open()
         .then(() => this.read())
+        .catch(() => null)
+        .then(async (stored) => stored ?? (await this.fetchBundledCatalog()))
         .then((seed) => {
           if (seed) this.apply(seed);
           return seed;
         })
-        .catch(() => null); // storage blocked → treat as no catalog
+        .catch(() => null);
     }
     return this.loading;
+  }
+
+  /** The sanitized catalog that ships with the build (public/catalog.json). */
+  private async fetchBundledCatalog(): Promise<Seed | null> {
+    try {
+      const r = await fetch('catalog.json');
+      return r.ok ? ((await r.json()) as Seed) : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Adopt an imported TV Time backup as this device's catalog. */

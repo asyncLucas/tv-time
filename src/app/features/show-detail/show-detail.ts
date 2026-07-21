@@ -34,7 +34,7 @@ import type { ShowStatus } from '../../core/models';
 
               <div class="controls">
                 <select class="status-sel" [value]="s.state.status" (change)="setStatus($any($event.target).value)">
-                  <option value="none">Following</option>
+                  <option value="none">Not in my library</option>
                   <option value="watching">Watching</option>
                   <option value="completed">Completed</option>
                   <option value="watchlist">Watchlist</option>

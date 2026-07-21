@@ -160,8 +160,16 @@ import { SeedService } from '../../core/seed.service';
             ⤒ Import state
             <input type="file" accept="application/json" (change)="importState($event)" hidden />
           </label>
+          <label class="btn file">
+            ↥ Import backup
+            <input type="file" accept="application/json" (change)="importBackup($event)" hidden />
+          </label>
           <button class="btn ghost" (click)="clearCache()">Clear TMDB cache</button>
         </div>
+        <p class="hint" style="margin-top:10px">
+          <strong>Import backup</strong> restores a full TV Time library export (your follows, watch
+          history, favorites and lists). <strong>Import state</strong> merges just the watch-state file.
+        </p>
         @if (msg()) { <div class="status ok">{{ msg() }}</div> }
 
         <details class="fmt">
@@ -476,6 +484,16 @@ export class Settings {
         this.flash('Import failed: ' + e.message);
       }
     });
+  }
+
+  importBackup(evt: Event): void {
+    const file = (evt.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    file
+      .text()
+      .then((txt) => this.store.importLibrary(txt))
+      .then(() => this.flash('Library backup imported.'))
+      .catch((e: any) => this.flash('Import failed: ' + (e?.message ?? e)));
   }
 
   async clearCache(): Promise<void> {

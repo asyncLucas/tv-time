@@ -242,6 +242,50 @@ def build():
     return seed
 
 
+CATALOG_OUT = os.path.join(PROJECT, "public", "catalog.json")
+
+
+def sanitize_catalog(seed):
+    """Strip everything personal, leaving only public show/movie metadata.
+
+    This is what SHIPS with the app — a browsable content database. It carries
+    no favorites, watch history, lists, profile, or activity dates: nothing that
+    links the catalog to any person.
+    """
+    def clean_show(x):
+        return {
+            "uuid": x["uuid"], "name": x["name"], "tvdbId": x["tvdbId"],
+            "genres": x["genres"], "firstReleaseDate": x["firstReleaseDate"],
+            "overview": x["overview"], "isEnded": x["isEnded"], "dayOfWeek": x["dayOfWeek"],
+            "network": x["network"], "country": x["country"], "hashtag": x["hashtag"],
+            "cachedPoster": x["cachedPoster"],
+            # personal fields neutralized
+            "followedAt": None, "showWatchedAt": None, "favorite": False,
+        }
+
+    def clean_movie(x):
+        return {
+            "uuid": x["uuid"], "name": x["name"], "imdbId": x["imdbId"], "tvdbId": x["tvdbId"],
+            "genres": x["genres"], "firstReleaseDate": x["firstReleaseDate"], "overview": x["overview"],
+            "followedAt": None, "watchedAt": None, "favorite": False,
+        }
+
+    return {
+        "meta": {
+            "source": "catalog (sanitized) — public show/movie metadata only",
+            "syncedApprox": seed["meta"]["syncedApprox"], "backedUp": "", "schema": 1,
+            "note": "Browsable content database. No personal data. Users build their own library on top.",
+        },
+        "profile": {
+            "id": 0, "login": "", "name": "", "image": None, "timezone": None,
+            "lang": "en", "createdAt": None, "favoriteGenres": [], "stats": {},
+        },
+        "shows": [clean_show(x) for x in seed["shows"]],
+        "movies": [clean_movie(x) for x in seed["movies"]],
+        "watchedMovies": [], "watchedEpisodes": [], "customLists": [],
+    }
+
+
 def main():
     seed = build()
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
@@ -249,6 +293,13 @@ def main():
     with open(OUT, "w", encoding="utf-8") as fh:
         fh.write(payload)
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+    # sanitized catalog that ships with the app
+    catalog = sanitize_catalog(seed)
+    os.makedirs(os.path.dirname(CATALOG_OUT), exist_ok=True)
+    cat_payload = json.dumps(catalog, ensure_ascii=False, indent=2)
+    with open(CATALOG_OUT, "w", encoding="utf-8") as fh:
+        fh.write(cat_payload)
 
     s = seed
     shows_with_tvdb = sum(1 for x in s["shows"] if x["tvdbId"])
@@ -260,6 +311,11 @@ def main():
     print(f"  watchedMovies: {len(s['watchedMovies'])}")
     print(f"  watchedEps   : {len(s['watchedEpisodes'])}")
     print(f"  customLists  : {len(s['customLists'])}")
+    print(
+        f"catalog.json written -> {os.path.relpath(CATALOG_OUT, PROJECT)}  "
+        f"({len(cat_payload)//1024} KB, sanitized: {len(catalog['shows'])} shows, "
+        f"{len(catalog['movies'])} movies, no personal data)"
+    )
 
 
 if __name__ == "__main__":

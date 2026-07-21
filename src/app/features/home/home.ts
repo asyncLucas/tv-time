@@ -49,7 +49,7 @@ interface UpNext {
         <div class="cta">
           <div>
             <strong>Turn on posters & "what's airing"</strong>
-            <p>Add a free TMDB key to enrich all {{ store.stats().showsFollowed }} shows with artwork and episode schedules.</p>
+            <p>Add a free TMDB key to enrich all {{ store.shows().length }} shows with artwork and episode schedules.</p>
           </div>
           <a class="btn primary" routerLink="/settings">Add TMDB key</a>
         </div>
