@@ -46,6 +46,8 @@ export interface TmdbMovie {
   cast: { name: string; character: string; profilePath: string | null }[];
   homepage: string | null;
   imdbId: string | null;
+  /** Best available YouTube trailer, as a watch URL — null if TMDB has none. */
+  trailerUrl: string | null;
 }
 
 export interface TmdbEpisode {
@@ -67,6 +69,22 @@ const IMG = 'https://image.tmdb.org/t/p';
  */
 export function tmdbPosterUrl(path: string | null, size: PosterSize = 'w342'): string | null {
   return path ? `${IMG}/${size}${path}` : null;
+}
+
+/**
+ * Pick the single most watch-worthy YouTube clip from a TMDB `videos` result set
+ * and return its watch URL. Prefers official trailers, then any trailer, then
+ * teasers; ignores non-YouTube sites we can't link cleanly. Null if none fit.
+ */
+function bestTrailerUrl(videos: any[]): string | null {
+  const score = (v: any): number => {
+    if (v.site !== 'YouTube' || !v.key) return -1;
+    const type = v.type === 'Trailer' ? 2 : v.type === 'Teaser' ? 1 : 0;
+    if (type === 0) return -1; // clips, featurettes, behind-the-scenes: not a trailer
+    return type * 2 + (v.official ? 1 : 0);
+  };
+  const best = videos.reduce<any>((top, v) => (score(v) > score(top ?? {}) ? v : top), null);
+  return best && score(best) > 0 ? `https://www.youtube.com/watch?v=${best.key}` : null;
 }
 const CACHE = 'tmdb-v1';
 const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days for JSON
@@ -283,7 +301,7 @@ export class TmdbService {
   }
 
   async movie(tmdbId: number): Promise<TmdbMovie | null> {
-    const d = await this.get(`/movie/${tmdbId}?append_to_response=credits`);
+    const d = await this.get(`/movie/${tmdbId}?append_to_response=credits,videos`);
     if (!d) return null;
     const crew = d.credits?.crew ?? [];
     return {
@@ -306,6 +324,7 @@ export class TmdbService {
       })),
       homepage: d.homepage || null,
       imdbId: d.imdb_id || null,
+      trailerUrl: bestTrailerUrl(d.videos?.results ?? []),
     };
   }
 

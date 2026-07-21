@@ -257,8 +257,38 @@ export class LibraryStore {
       const s = this.seedSvc.getShow(item.uuid);
       if (s)
         return { type: 'show', uuid: s.uuid, name: s.name, tvdbId: s.tvdbId, imdbId: null, cachedPoster: s.cachedPoster };
+
+      // Not in the seed catalog — fall back to titles the user added from TMDB,
+      // so a film/show put on a list still resolves and renders.
+      const mv = this.movie(item.uuid);
+      if (mv)
+        return { type: 'movie', uuid: mv.uuid, name: mv.name, tvdbId: mv.tvdbId, imdbId: mv.imdbId, cachedPoster: mv.cachedPoster ?? null };
+      const sv = this.show(item.uuid);
+      if (sv)
+        return { type: 'show', uuid: sv.uuid, name: sv.name, tvdbId: sv.tvdbId, imdbId: null, cachedPoster: sv.cachedPoster ?? null };
     }
     return null;
+  }
+
+  /** True if the list already contains this item (matched by uuid). */
+  isInList(listId: string, uuid: string): boolean {
+    const list = this.docs.lists.get(listId);
+    return !!list?.items?.some((it: any) => it.uuid === uuid);
+  }
+
+  /**
+   * Add a title to a custom list. Idempotent — a uuid already on the list is a
+   * no-op, so toggling from the UI can call this freely.
+   */
+  addListItem(
+    listId: string,
+    item: { uuid: string; title: string; entityType: 'movie' | 'show' },
+  ): void {
+    const list = this.docs.lists.get(listId);
+    if (!list) return;
+    const items = list.items ?? [];
+    if (items.some((it: any) => it.uuid === item.uuid)) return;
+    this.docs.lists.set(listId, { ...list, items: [...items, item] });
   }
 
   /** Remove an item from a custom list (matched by uuid, else title). */

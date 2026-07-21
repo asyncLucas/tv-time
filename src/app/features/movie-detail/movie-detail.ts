@@ -1,4 +1,5 @@
 import { Component, computed, effect, inject, input, signal, untracked } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { parseAddedKey } from '../../core/doc.service';
@@ -9,7 +10,7 @@ import { BackNav } from '../../shared/back-nav';
 
 @Component({
   selector: 'app-movie-detail',
-  imports: [RouterLink, Poster],
+  imports: [NgTemplateOutlet, RouterLink, Poster],
   template: `
     @if (movie(); as m) {
       <div class="detail">
@@ -28,6 +29,9 @@ import { BackNav } from '../../shared/back-nav';
                 @if (runtime()) { <span>{{ runtime() }}</span> }
                 @if (tmdbMovie()?.voteAverage) { <span>★ {{ tmdbMovie()!.voteAverage!.toFixed(1) }}</span> }
                 @if (tmdbMovie()?.directors?.length) { <span>{{ tmdbMovie()!.directors.join(', ') }}</span> }
+                @if (tmdbMovie()?.trailerUrl; as trailer) {
+                  <a class="trailer-badge" [href]="trailer" target="_blank" rel="noopener" title="Watch the trailer on YouTube">▶ Trailer</a>
+                }
               </div>
               @if (genres().length) {
                 <div class="genres">
@@ -43,6 +47,7 @@ import { BackNav } from '../../shared/back-nav';
                   <button class="btn primary add" [disabled]="adding()" (click)="addToLibrary()">
                     {{ adding() ? 'Adding…' : '+ Add to library' }}
                   </button>
+                  <ng-container [ngTemplateOutlet]="listControl" />
                 </div>
               } @else {
                 <div class="controls">
@@ -82,6 +87,7 @@ import { BackNav } from '../../shared/back-nav';
                       </button>
                     }
                   </div>
+                  <ng-container [ngTemplateOutlet]="listControl" />
                 </div>
 
                 @if (m.state.watchedAt) {
@@ -124,6 +130,50 @@ import { BackNav } from '../../shared/back-nav';
     } @else {
       <div class="page"><div class="empty">Movie not found.</div></div>
     }
+
+    <ng-template #listControl>
+      <div class="list-menu">
+        <button
+          class="btn"
+          [class.primary]="listMenuOpen()"
+          [attr.aria-expanded]="listMenuOpen()"
+          (click)="listMenuOpen.set(!listMenuOpen())"
+        >
+          ＋ List ▾
+        </button>
+        @if (listMenuOpen()) {
+          <div class="lm-backdrop" (click)="listMenuOpen.set(false)"></div>
+          <div class="lm-panel" role="menu">
+            @if (store.lists().length) {
+              @for (l of store.lists(); track l.id) {
+                <button
+                  class="lm-row"
+                  type="button"
+                  role="menuitemcheckbox"
+                  [attr.aria-checked]="store.isInList(l.id, uuid())"
+                  (click)="toggleList(l.id)"
+                >
+                  <span class="lm-check">{{ store.isInList(l.id, uuid()) ? '✓' : '' }}</span>
+                  <span class="lm-name">{{ l.name }}</span>
+                </button>
+              }
+              <div class="lm-sep"></div>
+            } @else {
+              <div class="lm-empty">No lists yet — make one:</div>
+            }
+            <form class="lm-new" (submit)="$event.preventDefault(); createListWithMovie()">
+              <input
+                class="lm-input"
+                placeholder="New list…"
+                [value]="newListName()"
+                (input)="newListName.set($any($event.target).value)"
+              />
+              <button class="btn sm" type="submit" [disabled]="!newListName().trim()">Add</button>
+            </form>
+          </div>
+        }
+      </div>
+    </ng-template>
   `,
   styleUrl: './movie-detail.scss',
 })
@@ -146,6 +196,10 @@ export class MovieDetail {
   /** Read-only mode: showing a TMDB title the user hasn't added to the library. */
   readonly isPreview = computed(() => !this.stored() && this.previewId() !== null);
   readonly adding = signal(false);
+
+  /** Whether the "add to list" dropdown is open, and the new-list draft name. */
+  readonly listMenuOpen = signal(false);
+  readonly newListName = signal('');
 
   /**
    * The film to render: the real library entry, or — in preview — one
@@ -236,6 +290,35 @@ export class MovieDetail {
   rate(n: number): void {
     const cur = this.movie()?.state.rating;
     this.store.rateMovie(this.uuid(), cur === n ? null : n);
+  }
+
+  /**
+   * Toggle this film's membership in a custom list. If we're still previewing a
+   * TMDB title, add it to the library first so the list item has something real
+   * to resolve to — the uuid is deterministic, so it's the same before and after.
+   */
+  async toggleList(listId: string): Promise<void> {
+    await this.ensureInLibrary();
+    const uuid = this.uuid();
+    if (this.store.isInList(listId, uuid)) {
+      this.store.removeListItem(listId, { uuid });
+    } else {
+      this.store.addListItem(listId, { uuid, title: this.movie()!.name, entityType: 'movie' });
+    }
+  }
+
+  /** Create a new list from the draft name and drop this film straight into it. */
+  async createListWithMovie(): Promise<void> {
+    const name = this.newListName().trim();
+    if (!name) return;
+    await this.ensureInLibrary();
+    const id = this.store.createList(name);
+    this.store.addListItem(id, { uuid: this.uuid(), title: this.movie()!.name, entityType: 'movie' });
+    this.newListName.set('');
+  }
+
+  private async ensureInLibrary(): Promise<void> {
+    if (this.isPreview()) await this.addToLibrary();
   }
 }
 
