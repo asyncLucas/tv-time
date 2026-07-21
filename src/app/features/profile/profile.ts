@@ -210,7 +210,7 @@ import { YearPipe } from '../../shared/year';
          readable there; without a cover there is nothing to overlap. */
       .head.over-banner {
         align-items: flex-end;
-        margin-top: -60px;
+        margin-top: -30px;
         padding-left: 24px;
         /* .banner is positioned, so it paints over static siblings — without a
            stacking context of its own the header would slide behind the cover. */
