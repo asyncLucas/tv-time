@@ -4,6 +4,25 @@ import { DocService } from './doc.service';
 
 export type PosterSize = 'w185' | 'w342' | 'w500' | 'original';
 
+/** One streaming/rental service a title is available on, per TMDB (JustWatch). */
+export interface WatchProvider {
+  name: string;
+  logoPath: string | null;
+}
+
+/**
+ * Where a title can be watched, in the viewer's region. `streaming` folds
+ * together subscription, free and ad-supported services (the "it's included"
+ * ways to watch); `rent`/`buy` are the paid-per-title options. `link` is the
+ * TMDB/JustWatch page listing them all for the region.
+ */
+export interface WatchProviders {
+  link: string | null;
+  streaming: WatchProvider[];
+  rent: WatchProvider[];
+  buy: WatchProvider[];
+}
+
 export interface TmdbShow {
   id: number;
   name: string;
@@ -19,6 +38,10 @@ export interface TmdbShow {
   networks: string[];
   /** TheTVDB series id, when TMDB knows it — episode watches are keyed by it. */
   tvdbId: string | null;
+  /** IMDb id, when TMDB knows it — used to build a Stremio deep link. */
+  imdbId: string | null;
+  /** Streaming/rental availability in the viewer's region, or null if unknown. */
+  watchProviders: WatchProviders | null;
 }
 
 /** One row of a TMDB search response — enough to render a pick-list card. */
@@ -48,6 +71,8 @@ export interface TmdbMovie {
   imdbId: string | null;
   /** Best available YouTube trailer, as a watch URL — null if TMDB has none. */
   trailerUrl: string | null;
+  /** Streaming/rental availability in the viewer's region, or null if unknown. */
+  watchProviders: WatchProviders | null;
 }
 
 export interface TmdbEpisode {
@@ -86,6 +111,45 @@ function bestTrailerUrl(videos: any[]): string | null {
   const best = videos.reduce<any>((top, v) => (score(v) > score(top ?? {}) ? v : top), null);
   return best && score(best) > 0 ? `https://www.youtube.com/watch?v=${best.key}` : null;
 }
+
+/**
+ * The two-letter region to ask TMDB for watch providers in — availability is
+ * country-specific, so we key off the browser's locale (e.g. `pt-BR` → `BR`)
+ * and fall back to the US when it carries no region.
+ */
+export function userRegion(): string {
+  try {
+    const region = new Intl.Locale(navigator.language).region;
+    if (region) return region.toUpperCase();
+  } catch {
+    /* older engines / malformed locale: fall through */
+  }
+  return 'US';
+}
+
+/**
+ * Reshape TMDB's `watch/providers` block for one region into our flat view.
+ * Subscription, free and ad-supported services all mean "you can just watch
+ * it", so they collapse into one `streaming` list (deduped — a service can be
+ * listed as both free and ad-supported). Returns null when the region has no
+ * providers at all, so callers can hide the row entirely.
+ */
+function parseWatchProviders(node: any, region: string): WatchProviders | null {
+  const r = node?.results?.[region];
+  if (!r) return null;
+  const map = (arr: any[] | undefined): WatchProvider[] =>
+    (arr ?? []).map((p) => ({ name: p.provider_name, logoPath: p.logo_path ?? null }));
+  const byName = new Map<string, WatchProvider>();
+  for (const p of [...map(r.flatrate), ...map(r.free), ...map(r.ads)]) {
+    if (!byName.has(p.name)) byName.set(p.name, p);
+  }
+  const streaming = [...byName.values()];
+  const rent = map(r.rent);
+  const buy = map(r.buy);
+  if (!streaming.length && !rent.length && !buy.length) return null;
+  return { link: r.link ?? null, streaming, rent, buy };
+}
+
 const CACHE = 'tmdb-v1';
 const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days for JSON
 /** Shorter query strings only return noise, so they never reach the API. */
@@ -146,6 +210,10 @@ export class TmdbService {
   profileImg(path: string | null, size: 'w185' | 'original' = 'w185'): string | null {
     return path ? `${IMG}/${size}${path}` : null;
   }
+  /** A watch-provider logo (Netflix, Prime, …), sized for a small badge. */
+  providerLogo(path: string | null, size: 'w45' | 'w92' | 'original' = 'w92'): string | null {
+    return path ? `${IMG}/${size}${path}` : null;
+  }
 
   // -------------------------------------------------------------------------
   // Discovery (search)
@@ -173,10 +241,20 @@ export class TmdbService {
    * render it. Only called when the caller actually asks — the Movies page holds
    * off until its Trending tab is opened.
    */
-  async trendingMovies(): Promise<TmdbSearchResult[]> {
-    const data = await this.get('/trending/movie/week');
+  trendingMovies(): Promise<TmdbSearchResult[]> {
+    return this.trending('movie');
+  }
+
+  /** This week's trending series. The Shows page holds off the same way. */
+  trendingShows(): Promise<TmdbSearchResult[]> {
+    return this.trending('tv');
+  }
+
+  private async trending(kind: 'tv' | 'movie'): Promise<TmdbSearchResult[]> {
+    const data = await this.get(`/trending/${kind}/week`);
     return ((data?.results ?? []) as any[]).slice(0, MAX_SEARCH_RESULTS).map((r) => ({
       tmdbId: r.id,
+      // /trending/tv calls it `name`, /trending/movie calls it `title`
       name: r.title ?? r.name ?? '',
       overview: r.overview ?? '',
       posterPath: r.poster_path ?? null,
@@ -240,13 +318,15 @@ export class TmdbService {
     // external_ids rides along on the same request: adding a show from search
     // needs its TheTVDB id, and a second round-trip for it would be wasteful.
     const d = await this.get(
-      `/tv/${tmdbId}?append_to_response=next_episode_to_air,external_ids`,
+      `/tv/${tmdbId}?append_to_response=next_episode_to_air,external_ids,watch/providers`,
     );
     if (!d) return null;
     const next = d.next_episode_to_air;
     const tvdb = d.external_ids?.tvdb_id;
     return {
       tvdbId: tvdb ? String(tvdb) : null,
+      imdbId: d.external_ids?.imdb_id || null,
+      watchProviders: parseWatchProviders(d['watch/providers'], userRegion()),
       id: d.id,
       name: d.name,
       overview: d.overview,
@@ -301,7 +381,7 @@ export class TmdbService {
   }
 
   async movie(tmdbId: number): Promise<TmdbMovie | null> {
-    const d = await this.get(`/movie/${tmdbId}?append_to_response=credits,videos`);
+    const d = await this.get(`/movie/${tmdbId}?append_to_response=credits,videos,watch/providers`);
     if (!d) return null;
     const crew = d.credits?.crew ?? [];
     return {
@@ -325,6 +405,7 @@ export class TmdbService {
       homepage: d.homepage || null,
       imdbId: d.imdb_id || null,
       trailerUrl: bestTrailerUrl(d.videos?.results ?? []),
+      watchProviders: parseWatchProviders(d['watch/providers'], userRegion()),
     };
   }
 

@@ -2,11 +2,12 @@ import { Component, computed, effect, inject, input, signal, untracked } from '@
 import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { parseAddedKey } from '../../core/doc.service';
-import { TmdbService, TmdbShow, TmdbEpisode, tmdbPosterUrl } from '../../core/tmdb.service';
+import { TmdbService, TmdbShow, TmdbEpisode, WatchProvider, tmdbPosterUrl } from '../../core/tmdb.service';
 import type { ShowStatus, ShowView } from '../../core/models';
 import { BackNav } from '../../shared/back-nav';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { YearPipe } from '../../shared/year';
+import { stremioUrl } from '../../shared/stremio';
 
 @Component({
   selector: 'app-show-detail',
@@ -26,7 +27,31 @@ import { YearPipe } from '../../shared/year';
                 @if (tmdbShow()?.status) { <span>{{ tmdbShow()!.status }}</span> }
                 @if (s.network || tmdbShow()?.networks?.length) { <span>{{ s.network || tmdbShow()!.networks[0] }}</span> }
                 @if (totalEpisodes()) { <span>{{ totalEpisodes() }} episodes</span> }
+                @if (stremioUrl(); as stremio) {
+                  <a class="stremio-badge" [href]="stremio" target="_blank" rel="noopener" title="Open in Stremio">Stremio</a>
+                }
               </div>
+              @if (tmdbShow()?.watchProviders; as wp) {
+                @if (wp.streaming.length || wp.rent.length || wp.buy.length) {
+                  <div class="providers">
+                    @if (wp.streaming.length) {
+                      <span class="prov-label">Streaming</span>
+                      @for (p of wp.streaming; track p.name) {
+                        <img class="prov" [src]="tmdb.providerLogo(p.logoPath)" [alt]="p.name" [title]="'Stream on ' + p.name" loading="lazy" />
+                      }
+                    }
+                    @if (wp.rent.length || wp.buy.length) {
+                      <span class="prov-label">Rent / Buy</span>
+                      @for (p of rentOrBuy(); track p.name) {
+                        <img class="prov" [src]="tmdb.providerLogo(p.logoPath)" [alt]="p.name" [title]="'Rent or buy on ' + p.name" loading="lazy" />
+                      }
+                    }
+                    @if (wp.link) {
+                      <a class="prov-more" [href]="wp.link" target="_blank" rel="noopener">All options ↗</a>
+                    }
+                  </div>
+                }
+              }
               @if (s.genres.length || tmdbShow()?.genres?.length) {
                 <div class="genres">
                   @for (g of (tmdbShow()?.genres?.length ? tmdbShow()!.genres : s.genres); track g) {
@@ -36,14 +61,17 @@ import { YearPipe } from '../../shared/year';
               }
               <p class="overview">{{ tmdbShow()?.overview || s.overview || 'No synopsis available.' }}</p>
 
-              @if (isPreview()) {
-                <div class="controls">
+              <div class="controls">
+                @if (isPreview()) {
                   <button class="btn primary add" [disabled]="adding()" (click)="addToLibrary()">
                     {{ adding() ? 'Adding…' : '+ Add to library' }}
                   </button>
-                </div>
-              } @else {
-                <div class="controls">
+                } @else {
+                  @if (isAdded()) {
+                    <button class="btn in-lib" (click)="removing.set(true)" title="Remove from library">
+                      <span class="lbl-in">✓ In library</span><span class="lbl-out">✕ Remove</span>
+                    </button>
+                  }
                   <select class="status-sel" [value]="s.state.status" (change)="setStatus($any($event.target).value)">
                     <option value="none">Not in my library</option>
                     <option value="watching">Watching</option>
@@ -69,8 +97,8 @@ import { YearPipe } from '../../shared/year';
                       </button>
                     }
                   </div>
-                </div>
-              }
+                }
+              </div>
 
               @if (markingAll()) {
                 <div class="marking">Marking all episodes as watched…</div>
@@ -181,6 +209,18 @@ import { YearPipe } from '../../shared/year';
         (dismissed)="pending.set(null)"
       />
     }
+
+    @if (removing()) {
+      <app-confirm-dialog
+        [open]="true"
+        [danger]="true"
+        heading="Remove from library?"
+        message="This deletes the show from your library along with its rating and watch history. You can add it again anytime."
+        confirmLabel="Remove"
+        (confirmed)="confirmRemove()"
+        (dismissed)="removing.set(false)"
+      />
+    }
   `,
   styleUrl: './show-detail.scss',
 })
@@ -202,7 +242,11 @@ export class ShowDetail {
 
   /** Read-only mode: showing a TMDB title the user hasn't added to the library. */
   readonly isPreview = computed(() => !this.stored() && this.previewId() !== null);
+  /** In-library, and added from TMDB — so the "In library" toggle can remove it. */
+  readonly isAdded = computed(() => !!this.stored() && this.previewId() !== null);
   readonly adding = signal(false);
+  /** Whether the "remove from library?" confirmation is showing. */
+  readonly removing = signal(false);
 
   /**
    * The show to render: the real library entry, or — in preview — one
@@ -245,6 +289,18 @@ export class ShowDetail {
   readonly totalEpisodes = computed(() =>
     (this.tmdbShow()?.seasons ?? []).reduce((n, s) => n + s.episodeCount, 0),
   );
+
+  /** A Stremio Web link for this show, once its IMDb id is known. */
+  readonly stremioUrl = computed(() => stremioUrl('series', this.tmdbShow()?.imdbId ?? null));
+
+  /** Rent and buy providers merged (deduped) for the paid-options badge row. */
+  readonly rentOrBuy = computed<WatchProvider[]>(() => {
+    const wp = this.tmdbShow()?.watchProviders;
+    if (!wp) return [];
+    const byName = new Map<string, WatchProvider>();
+    for (const p of [...wp.rent, ...wp.buy]) if (!byName.has(p.name)) byName.set(p.name, p);
+    return [...byName.values()];
+  });
   readonly progress = computed(() => {
     const total = this.totalEpisodes();
     if (!total) return 0;
@@ -320,6 +376,18 @@ export class ShowDetail {
     } finally {
       this.adding.set(false);
     }
+  }
+
+  /**
+   * Remove this show from the library. Its uuid is the deterministic TMDB
+   * added-key, so once the entry is gone `stored()` flips back to undefined and
+   * the page reactively returns to its "+ Add to library" preview — the button
+   * toggles in place rather than navigating away.
+   */
+  confirmRemove(): void {
+    this.removing.set(false);
+    if (!this.isAdded()) return;
+    this.store.removeAdded('show', this.uuid());
   }
 
   private async loadSeason(tmdbId: number, seasonNumber: number): Promise<void> {

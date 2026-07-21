@@ -69,6 +69,79 @@
   margin-left: 8px;
   opacity: 0.5;
 }
+
+/* Stremio badge — a violet pill in the facts row linking out to Stremio Web. */
+.stremio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(122, 92, 255, 0.16);
+  color: #b3a1ff;
+  border: 1px solid transparent;
+  transition: filter 0.14s ease;
+}
+.stremio-badge:hover {
+  filter: brightness(1.15);
+}
+
+/* Where-to-watch row: a label followed by provider logos. */
+.providers {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 2px;
+}
+.prov-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.prov-label:not(:first-child) {
+  margin-left: 6px;
+}
+.prov {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  object-fit: cover;
+  background: var(--bg-elev-2);
+}
+.prov-more {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-decoration: underline;
+  margin-left: 4px;
+}
+
+/* "In library" toggle — occupies the same slot as "Add to library"; hovering
+   reveals its remove action so the button reads as an on/off control. */
+.btn.in-lib {
+  background: rgba(74, 194, 107, 0.14);
+  border-color: transparent;
+  color: #4ac26b;
+}
+.btn.in-lib .lbl-out {
+  display: none;
+}
+.btn.in-lib:hover {
+  background: rgba(248, 81, 73, 0.16);
+  color: #f85149;
+}
+.btn.in-lib:hover .lbl-in {
+  display: none;
+}
+.btn.in-lib:hover .lbl-out {
+  display: inline;
+}
+
 .genres {
   display: flex;
   gap: 6px;

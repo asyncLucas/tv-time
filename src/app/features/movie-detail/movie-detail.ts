@@ -3,14 +3,16 @@ import { NgTemplateOutlet } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { parseAddedKey } from '../../core/doc.service';
-import { TmdbService, TmdbMovie, tmdbPosterUrl } from '../../core/tmdb.service';
+import { TmdbService, TmdbMovie, WatchProvider, tmdbPosterUrl } from '../../core/tmdb.service';
 import type { MovieView } from '../../core/models';
 import { Poster } from '../../shared/poster';
 import { BackNav } from '../../shared/back-nav';
+import { ConfirmDialog } from '../../shared/confirm-dialog';
+import { stremioUrl } from '../../shared/stremio';
 
 @Component({
   selector: 'app-movie-detail',
-  imports: [NgTemplateOutlet, RouterLink, Poster],
+  imports: [NgTemplateOutlet, RouterLink, Poster, ConfirmDialog],
   template: `
     @if (movie(); as m) {
       <div class="detail">
@@ -32,7 +34,31 @@ import { BackNav } from '../../shared/back-nav';
                 @if (tmdbMovie()?.trailerUrl; as trailer) {
                   <a class="trailer-badge" [href]="trailer" target="_blank" rel="noopener" title="Watch the trailer on YouTube">▶ Trailer</a>
                 }
+                @if (stremioUrl(); as stremio) {
+                  <a class="stremio-badge" [href]="stremio" target="_blank" rel="noopener" title="Open in Stremio">Stremio</a>
+                }
               </div>
+              @if (tmdbMovie()?.watchProviders; as wp) {
+                @if (wp.streaming.length || wp.rent.length || wp.buy.length) {
+                  <div class="providers">
+                    @if (wp.streaming.length) {
+                      <span class="prov-label">Streaming</span>
+                      @for (p of wp.streaming; track p.name) {
+                        <img class="prov" [src]="tmdb.providerLogo(p.logoPath)" [alt]="p.name" [title]="'Stream on ' + p.name" loading="lazy" />
+                      }
+                    }
+                    @if (wp.rent.length || wp.buy.length) {
+                      <span class="prov-label">Rent / Buy</span>
+                      @for (p of rentOrBuy(); track p.name) {
+                        <img class="prov" [src]="tmdb.providerLogo(p.logoPath)" [alt]="p.name" [title]="'Rent or buy on ' + p.name" loading="lazy" />
+                      }
+                    }
+                    @if (wp.link) {
+                      <a class="prov-more" [href]="wp.link" target="_blank" rel="noopener">All options ↗</a>
+                    }
+                  </div>
+                }
+              }
               @if (genres().length) {
                 <div class="genres">
                   @for (g of genres(); track g) {
@@ -42,15 +68,28 @@ import { BackNav } from '../../shared/back-nav';
               }
               <p class="overview">{{ tmdbMovie()?.overview || m.overview || 'No synopsis available.' }}</p>
 
-              @if (isPreview()) {
-                <div class="controls">
-                  <button class="btn primary add" [disabled]="adding()" (click)="addToLibrary()">
-                    {{ adding() ? 'Adding…' : '+ Add to library' }}
-                  </button>
-                  <ng-container [ngTemplateOutlet]="listControl" />
-                </div>
-              } @else {
-                <div class="controls">
+              <div class="controls">
+                @if (isPreview()) {
+                  <div class="list-menu split">
+                    <button class="btn primary add" [disabled]="adding()" (click)="addToLibrary()">
+                      {{ adding() ? 'Adding…' : '+ Add to library' }}
+                    </button>
+                    <button
+                      class="btn primary split-caret"
+                      [attr.aria-expanded]="listMenuOpen()"
+                      aria-label="Add to a list"
+                      (click)="listMenuOpen.set(!listMenuOpen())"
+                    >
+                      ▾
+                    </button>
+                    <ng-container [ngTemplateOutlet]="listPanel" />
+                  </div>
+                } @else {
+                  @if (isAdded()) {
+                    <button class="btn in-lib" (click)="removing.set(true)" title="Remove from library">
+                      <span class="lbl-in">✓ In library</span><span class="lbl-out">✕ Remove</span>
+                    </button>
+                  }
                   <button
                     class="btn"
                     [class.primary]="m.state.watched"
@@ -88,11 +127,11 @@ import { BackNav } from '../../shared/back-nav';
                     }
                   </div>
                   <ng-container [ngTemplateOutlet]="listControl" />
-                </div>
-
-                @if (m.state.watchedAt) {
-                  <div class="watched-at">Watched {{ m.state.watchedAt.slice(0, 10) }}</div>
                 }
+              </div>
+
+              @if (m.state.watchedAt) {
+                <div class="watched-at">Watched {{ m.state.watchedAt.slice(0, 10) }}</div>
               }
             </div>
           </div>
@@ -131,6 +170,18 @@ import { BackNav } from '../../shared/back-nav';
       <div class="page"><div class="empty">Movie not found.</div></div>
     }
 
+    @if (removing()) {
+      <app-confirm-dialog
+        [open]="true"
+        [danger]="true"
+        heading="Remove from library?"
+        message="This deletes the film from your library along with its rating and watch status. You can add it again anytime."
+        confirmLabel="Remove"
+        (confirmed)="confirmRemove()"
+        (dismissed)="removing.set(false)"
+      />
+    }
+
     <ng-template #listControl>
       <div class="list-menu">
         <button
@@ -141,7 +192,12 @@ import { BackNav } from '../../shared/back-nav';
         >
           ＋ List ▾
         </button>
-        @if (listMenuOpen()) {
+        <ng-container [ngTemplateOutlet]="listPanel" />
+      </div>
+    </ng-template>
+
+    <ng-template #listPanel>
+      @if (listMenuOpen()) {
           <div class="lm-backdrop" (click)="listMenuOpen.set(false)"></div>
           <div class="lm-panel" role="menu">
             @if (store.lists().length) {
@@ -171,8 +227,7 @@ import { BackNav } from '../../shared/back-nav';
               <button class="btn sm" type="submit" [disabled]="!newListName().trim()">Add</button>
             </form>
           </div>
-        }
-      </div>
+      }
     </ng-template>
   `,
   styleUrl: './movie-detail.scss',
@@ -195,7 +250,11 @@ export class MovieDetail {
 
   /** Read-only mode: showing a TMDB title the user hasn't added to the library. */
   readonly isPreview = computed(() => !this.stored() && this.previewId() !== null);
+  /** In-library, and added from TMDB — so the "In library" toggle can remove it. */
+  readonly isAdded = computed(() => !!this.stored() && this.previewId() !== null);
   readonly adding = signal(false);
+  /** Whether the "remove from library?" confirmation is showing. */
+  readonly removing = signal(false);
 
   /** Whether the "add to list" dropdown is open, and the new-list draft name. */
   readonly listMenuOpen = signal(false);
@@ -232,6 +291,20 @@ export class MovieDetail {
   readonly genres = computed(() => {
     const fromTmdb = this.tmdbMovie()?.genres ?? [];
     return fromTmdb.length ? fromTmdb : this.movie()?.genres ?? [];
+  });
+
+  /** A Stremio Web link for this film, once its IMDb id is known. */
+  readonly stremioUrl = computed(() =>
+    stremioUrl('movie', this.tmdbMovie()?.imdbId ?? this.movie()?.imdbId ?? null),
+  );
+
+  /** Rent and buy providers merged (deduped) for the paid-options badge row. */
+  readonly rentOrBuy = computed<WatchProvider[]>(() => {
+    const wp = this.tmdbMovie()?.watchProviders;
+    if (!wp) return [];
+    const byName = new Map<string, WatchProvider>();
+    for (const p of [...wp.rent, ...wp.buy]) if (!byName.has(p.name)) byName.set(p.name, p);
+    return [...byName.values()];
   });
 
   constructor() {
@@ -290,6 +363,18 @@ export class MovieDetail {
   rate(n: number): void {
     const cur = this.movie()?.state.rating;
     this.store.rateMovie(this.uuid(), cur === n ? null : n);
+  }
+
+  /**
+   * Remove this film from the library. Its uuid is the deterministic TMDB
+   * added-key, so once the entry is gone `stored()` flips back to undefined and
+   * the page reactively returns to its "+ Add to library" preview — the button
+   * toggles in place rather than navigating away.
+   */
+  confirmRemove(): void {
+    this.removing.set(false);
+    if (!this.isAdded()) return;
+    this.store.removeAdded('movie', this.uuid());
   }
 
   /**
