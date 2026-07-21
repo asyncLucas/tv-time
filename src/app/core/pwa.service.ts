@@ -12,8 +12,8 @@ interface BeforeInstallPromptEvent extends Event {
  * Progressive Web App lifecycle:
  *  - captures the browser's install prompt so we can offer an in-app "Install"
  *    affordance instead of relying on a hidden browser menu, and
- *  - watches the service worker for a freshly deployed version so the user can
- *    refresh into it on their terms.
+ *  - watches the service worker for a freshly deployed version and force-reloads
+ *    into it automatically so every device converges on the latest build.
  *
  * The service worker itself is only active in production builds (see
  * app.config.ts), so all of this is inert under `ng serve` — by design.
@@ -30,8 +30,10 @@ export class PwaService {
   readonly canInstall = signal(false);
   /** True once the app is running as an installed PWA. */
   readonly installed = signal(false);
-  /** True when a newer version has been downloaded and is ready to activate. */
+  /** True once a new version has been found and we're force-reloading into it. */
   readonly updateReady = signal(false);
+  /** Guards against a double activate/reload if two version events race. */
+  private updating = false;
   /** Per-device dismissal of the mobile install banner (persisted, not synced). */
   readonly bannerDismissed = signal(localStorage.getItem(PwaService.DISMISS_KEY) === '1');
 
@@ -73,9 +75,12 @@ export class PwaService {
     });
 
     if (this.swUpdate?.isEnabled) {
+      // A freshly deployed build has finished downloading → force-reload into it.
       this.swUpdate.versionUpdates
         .pipe(filter((e): e is VersionReadyEvent => e.type === 'VERSION_READY'))
-        .subscribe(() => this.updateReady.set(true));
+        .subscribe(() => this.forceUpdate());
+      // A corrupt/lost SW state can't self-heal in place — a hard reload re-fetches it.
+      this.swUpdate.unrecoverable.subscribe(() => location.reload());
       // proactively poll for a new deploy every 30 min
       setInterval(() => this.swUpdate!.checkForUpdate().catch(() => {}), 30 * 60 * 1000);
     }
@@ -106,10 +111,22 @@ export class PwaService {
     return outcome === 'accepted';
   }
 
-  /** Activate the downloaded update and reload into it. */
-  async applyUpdate(): Promise<void> {
-    if (!this.swUpdate?.isEnabled) return;
-    await this.swUpdate.activateUpdate();
-    location.reload();
+  /**
+   * Activate the freshly downloaded version and reload into it. Runs
+   * automatically the moment a new build is ready; data is safe because it lives
+   * in IndexedDB/the CRDT, not in page memory. `updateReady` flips first so the
+   * UI can flash a brief "Updating…" note before the reload lands.
+   */
+  private async forceUpdate(): Promise<void> {
+    if (!this.swUpdate?.isEnabled || this.updating) return;
+    this.updating = true;
+    this.updateReady.set(true);
+    try {
+      await this.swUpdate.activateUpdate();
+    } catch {
+      // Activation can fail if the new SW is already controlling; reload anyway.
+    } finally {
+      location.reload();
+    }
   }
 }
