@@ -14,6 +14,9 @@ import { YearPipe } from '../../shared/year';
         <div class="banner" [class.empty]="!p.banner">
           @if (p.banner) {
             <img class="banner-img" [src]="p.banner" alt="" />
+            <!-- Darkens the lower band the header sits over, so the name stays
+                 readable whatever cover is picked. -->
+            <div class="banner-scrim" aria-hidden="true"></div>
           }
           <div class="banner-actions">
             <button class="banner-btn" (click)="bannerPicker.click()" [disabled]="bannerBusy()">
@@ -164,10 +167,17 @@ import { YearPipe } from '../../shared/year';
         object-fit: cover;
         display: block;
       }
+      .banner-scrim {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(180deg, transparent 45%, rgba(12, 13, 16, 0.75) 100%);
+      }
+      /* Top-right, not bottom: the header now overlaps the cover's lower edge
+         and would collide with buttons parked there. */
       .banner-actions {
         position: absolute;
         right: 12px;
-        bottom: 12px;
+        top: 12px;
         display: flex;
         gap: 8px;
       }
@@ -195,23 +205,29 @@ import { YearPipe } from '../../shared/year';
         gap: 18px;
         margin: 20px 0 32px;
       }
-      /* With a cover above it, the avatar rides up over the seam — the standard
-         profile-header overlap. Without one there is nothing to overlap.
-         Only the avatar is pulled up: the name and byline stay clear of the
-         image, where they are legible over any cover the user picks. */
+      /* With a cover, the whole header rides up over its lower edge — avatar,
+         name and byline together. The scrim above is what keeps the text
+         readable there; without a cover there is nothing to overlap. */
       .head.over-banner {
         align-items: flex-end;
-      }
-      .head.over-banner .avatar-btn {
-        margin: -52px 0 0 24px;
+        margin-top: -60px;
+        padding-left: 24px;
         /* .banner is positioned, so it paints over static siblings — without a
-           stacking context of its own the avatar would slide behind the cover. */
+           stacking context of its own the header would slide behind the cover. */
         position: relative;
         z-index: 1;
       }
       .head.over-banner .avatar {
         border-width: 3px;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+      }
+      /* Only needed over the image: the text sits on a photo, not the page. */
+      .head.over-banner .name,
+      .head.over-banner .sub {
+        text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+      }
+      .head.over-banner .sub {
+        color: #d7dae0;
       }
       .avatar {
         width: 72px;
@@ -415,6 +431,23 @@ import { YearPipe } from '../../shared/year';
         max-width: 620px;
         border-top: 1px solid var(--line-soft);
         padding-top: 20px;
+      }
+
+      @media (max-width: 720px) {
+        .banner {
+          height: 130px;
+        }
+        /* The header wraps to two lines on a narrow screen, so it overlaps by
+           less — a full-size pull would push the name off the cover entirely. */
+        .head.over-banner {
+          margin-top: -40px;
+          padding-left: 12px;
+        }
+        .head.over-banner .avatar,
+        .head.over-banner .avatar.placeholder {
+          width: 56px;
+          height: 56px;
+        }
       }
     `,
   ],
