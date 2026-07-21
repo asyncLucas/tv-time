@@ -17,14 +17,14 @@ import { Poster } from '../../shared/poster';
             <app-poster class="poster" [title]="m.name" [imdbId]="m.imdbId" />
             <div class="info">
               <h1>{{ m.name }}</h1>
-              @if (tmdb2()?.tagline) {
-                <p class="tagline">{{ tmdb2()!.tagline }}</p>
+              @if (tmdbMovie()?.tagline) {
+                <p class="tagline">{{ tmdbMovie()!.tagline }}</p>
               }
               <div class="facts">
                 @if (year()) { <span>{{ year() }}</span> }
                 @if (runtime()) { <span>{{ runtime() }}</span> }
-                @if (tmdb2()?.voteAverage) { <span>★ {{ tmdb2()!.voteAverage!.toFixed(1) }}</span> }
-                @if (tmdb2()?.directors?.length) { <span>{{ tmdb2()!.directors.join(', ') }}</span> }
+                @if (tmdbMovie()?.voteAverage) { <span>★ {{ tmdbMovie()!.voteAverage!.toFixed(1) }}</span> }
+                @if (tmdbMovie()?.directors?.length) { <span>{{ tmdbMovie()!.directors.join(', ') }}</span> }
               </div>
               @if (genres().length) {
                 <div class="genres">
@@ -33,7 +33,7 @@ import { Poster } from '../../shared/poster';
                   }
                 </div>
               }
-              <p class="overview">{{ tmdb2()?.overview || m.overview || 'No synopsis available.' }}</p>
+              <p class="overview">{{ tmdbMovie()?.overview || m.overview || 'No synopsis available.' }}</p>
 
               <div class="controls">
                 <button
@@ -78,10 +78,10 @@ import { Poster } from '../../shared/poster';
             </div>
           } @else if (loading()) {
             <div class="empty">Loading details…</div>
-          } @else if (tmdb2()?.cast?.length) {
+          } @else if (tmdbMovie()?.cast?.length) {
             <h2 class="sec">Cast</h2>
             <div class="cast">
-              @for (c of tmdb2()!.cast; track c.name) {
+              @for (c of tmdbMovie()!.cast; track c.name) {
                 <div class="person">
                   @if (tmdb.profileImg(c.profilePath); as img) {
                     <img [src]="img" [alt]="c.name" loading="lazy" />
@@ -111,25 +111,25 @@ export class MovieDetail {
   readonly uuid = input.required<string>();
   readonly movie = computed(() => this.store.movie(this.uuid()));
 
-  readonly tmdb2 = signal<TmdbMovie | null>(null);
+  readonly tmdbMovie = signal<TmdbMovie | null>(null);
   readonly loading = signal(false);
 
   readonly backdrop = computed(() => {
-    const b = this.tmdb.poster(this.tmdb2()?.backdropPath ?? null, 'original');
+    const b = this.tmdb.poster(this.tmdbMovie()?.backdropPath ?? null, 'original');
     return b ? `url(${b})` : 'none';
   });
   readonly year = computed(
-    () => (this.tmdb2()?.releaseDate || this.movie()?.firstReleaseDate)?.slice(0, 4) ?? '',
+    () => (this.tmdbMovie()?.releaseDate || this.movie()?.firstReleaseDate)?.slice(0, 4) ?? '',
   );
   readonly runtime = computed(() => {
-    const r = this.tmdb2()?.runtime;
+    const r = this.tmdbMovie()?.runtime;
     if (!r) return '';
     const h = Math.floor(r / 60);
     const min = r % 60;
     return h ? `${h}h ${min}m` : `${min}m`;
   });
   readonly genres = computed(() => {
-    const fromTmdb = this.tmdb2()?.genres ?? [];
+    const fromTmdb = this.tmdbMovie()?.genres ?? [];
     return fromTmdb.length ? fromTmdb : this.movie()?.genres ?? [];
   });
 
@@ -137,14 +137,14 @@ export class MovieDetail {
     // load TMDB detail whenever the route movie (with an imdb id) changes
     effect(() => {
       const m = this.movie();
-      this.tmdb2.set(null);
+      this.tmdbMovie.set(null);
       if (m?.imdbId && this.tmdb.hasKey()) this.load(m.imdbId);
     });
   }
 
   private async load(imdbId: string): Promise<void> {
     this.loading.set(true);
-    this.tmdb2.set(await this.tmdb.movieByImdb(imdbId));
+    this.tmdbMovie.set(await this.tmdb.movieByImdb(imdbId));
     this.loading.set(false);
   }
 

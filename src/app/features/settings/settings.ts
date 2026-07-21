@@ -1,7 +1,7 @@
 import { Component, inject, signal } from '@angular/core';
 import { LibraryStore } from '../../core/library.store';
 import { TmdbService } from '../../core/tmdb.service';
-import { SyncService } from '../../core/sync.service';
+import { SyncService, DEFAULT_SIGNALING_URL } from '../../core/sync.service';
 import { GistSyncService } from '../../core/gist-sync.service';
 import { DocService, DB_NAME } from '../../core/doc.service';
 import { LocalConfigService } from '../../core/local-config.service';
@@ -398,8 +398,9 @@ export class Settings {
   msg = signal('');
   signaling = signal(this.config.get<string>('signalingUrl') ?? '');
   gistToken = signal('');
-  readonly defaultSignaling = 'wss://y-webrtc-eu.fly.dev';
-  readonly gistTokenUrl = 'https://github.com/settings/tokens/new?scopes=gist&description=TV+Time+Revival';
+  readonly defaultSignaling = DEFAULT_SIGNALING_URL;
+  readonly gistTokenUrl =
+    'https://github.com/settings/tokens/new?scopes=gist&description=TV+Time+Revival';
 
   /** Human-readable shape of a valid import file (annotated). */
   readonly importFormat = `{

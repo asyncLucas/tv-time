@@ -240,6 +240,15 @@ export class LibraryStore {
     return !!this.episodeWatchesSig()[epKey(tvdbId, season, episode)];
   }
 
+  /** Episodes of a show-season marked watched — reactive, no episode list needed. */
+  watchedInSeason(tvdbId: string, season: number): number {
+    let n = 0;
+    for (const w of Object.values(this.episodeWatchesSig())) {
+      if (w.tvdbId === tvdbId && w.season === season) n++;
+    }
+    return n;
+  }
+
   // -------------------------------------------------------------------------
   // Mutations (write straight to the CRDT; signals refresh via observers)
   // -------------------------------------------------------------------------

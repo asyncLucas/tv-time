@@ -18,19 +18,19 @@ import type { ShowStatus } from '../../core/models';
             <div class="info">
               <h1>{{ s.name }}</h1>
               <div class="facts">
-                @if (tmdb2()?.firstAirDate) { <span>{{ tmdb2()!.firstAirDate!.slice(0, 4) }}</span> }
-                @if (tmdb2()?.status) { <span>{{ tmdb2()!.status }}</span> }
-                @if (s.network || tmdb2()?.networks?.length) { <span>{{ s.network || tmdb2()!.networks[0] }}</span> }
+                @if (tmdbShow()?.firstAirDate) { <span>{{ tmdbShow()!.firstAirDate!.slice(0, 4) }}</span> }
+                @if (tmdbShow()?.status) { <span>{{ tmdbShow()!.status }}</span> }
+                @if (s.network || tmdbShow()?.networks?.length) { <span>{{ s.network || tmdbShow()!.networks[0] }}</span> }
                 @if (totalEpisodes()) { <span>{{ totalEpisodes() }} episodes</span> }
               </div>
-              @if (s.genres.length || tmdb2()?.genres?.length) {
+              @if (s.genres.length || tmdbShow()?.genres?.length) {
                 <div class="genres">
-                  @for (g of (tmdb2()?.genres?.length ? tmdb2()!.genres : s.genres); track g) {
+                  @for (g of (tmdbShow()?.genres?.length ? tmdbShow()!.genres : s.genres); track g) {
                     <span class="chip">{{ g }}</span>
                   }
                 </div>
               }
-              <p class="overview">{{ tmdb2()?.overview || s.overview || 'No synopsis available.' }}</p>
+              <p class="overview">{{ tmdbShow()?.overview || s.overview || 'No synopsis available.' }}</p>
 
               <div class="controls">
                 <select class="status-sel" [value]="s.state.status" (change)="setStatus($any($event.target).value)">
@@ -69,16 +69,18 @@ import type { ShowStatus } from '../../core/models';
             </div>
           } @else if (loadingSeasons()) {
             <div class="empty">Loading episodes…</div>
-          } @else if (tmdb2()?.seasons?.length) {
-            @for (season of tmdb2()!.seasons; track season.seasonNumber) {
+          } @else if (tmdbShow()?.seasons?.length) {
+            @for (season of tmdbShow()!.seasons; track season.seasonNumber) {
               <section class="season">
                 <header (click)="toggleSeason(season.seasonNumber)">
                   <div class="s-title">
                     <span class="caret" [class.open]="isOpen(season.seasonNumber)">▸</span>
                     Season {{ season.seasonNumber }}
-                    <span class="s-count">{{ watchedInSeason(season.seasonNumber) }}/{{ season.episodeCount }}</span>
+                    <span class="s-count">{{ store.watchedInSeason(s.tvdbId!, season.seasonNumber) }}/{{ season.episodeCount }}</span>
                   </div>
-                  <button class="btn ghost sm" (click)="markSeason($event, season.seasonNumber)">Mark all</button>
+                  @if (!seasonComplete(s.tvdbId, season)) {
+                    <button class="btn ghost sm" (click)="markSeason($event, season.seasonNumber)">Mark all</button>
+                  }
                 </header>
                 @if (isOpen(season.seasonNumber)) {
                   <div class="eps">
@@ -122,19 +124,19 @@ export class ShowDetail {
   readonly uuid = input.required<string>();
   readonly show = computed(() => this.store.show(this.uuid()));
 
-  readonly tmdb2 = signal<TmdbShow | null>(null);
+  readonly tmdbShow = signal<TmdbShow | null>(null);
   readonly episodes = signal<Record<number, TmdbEpisode[]>>({});
   readonly loadingSeasons = signal(false);
   readonly markingAll = signal(false);
   private open = signal<Set<number>>(new Set());
 
-  readonly posterUrl = computed(() => this.tmdb.poster(this.tmdb2()?.posterPath ?? null, 'w342'));
+  readonly posterUrl = computed(() => this.tmdb.poster(this.tmdbShow()?.posterPath ?? null, 'w342'));
   readonly backdrop = computed(() => {
-    const b = this.tmdb.poster(this.tmdb2()?.backdropPath ?? null, 'original');
+    const b = this.tmdb.poster(this.tmdbShow()?.backdropPath ?? null, 'original');
     return b ? `url(${b})` : 'none';
   });
   readonly totalEpisodes = computed(() =>
-    (this.tmdb2()?.seasons ?? []).reduce((n, s) => n + s.episodeCount, 0),
+    (this.tmdbShow()?.seasons ?? []).reduce((n, s) => n + s.episodeCount, 0),
   );
   readonly progress = computed(() => {
     const total = this.totalEpisodes();
@@ -146,7 +148,7 @@ export class ShowDetail {
     // load TMDB show whenever the route show (with a tvdb id) changes
     effect(() => {
       const s = this.show();
-      this.tmdb2.set(null);
+      this.tmdbShow.set(null);
       this.episodes.set({});
       if (s?.tvdbId && this.tmdb.hasKey()) this.loadShow(s.tvdbId);
     });
@@ -155,7 +157,7 @@ export class ShowDetail {
   private async loadShow(tvdbId: string): Promise<void> {
     this.loadingSeasons.set(true);
     const info = await this.tmdb.showByTvdb(tvdbId);
-    this.tmdb2.set(info);
+    this.tmdbShow.set(info);
     this.loadingSeasons.set(false);
     // auto-open the first season with unwatched episodes (or season 1)
     if (info?.seasons.length) {
@@ -179,7 +181,7 @@ export class ShowDetail {
     if (set.has(n)) set.delete(n);
     else {
       set.add(n);
-      const id = this.tmdb2()?.id;
+      const id = this.tmdbShow()?.id;
       if (id) this.loadSeason(id, n);
     }
     this.open.set(set);
@@ -192,32 +194,33 @@ export class ShowDetail {
     if (!tvdbId) return;
     this.store.setEpisodeWatched(tvdbId, ep.seasonNumber, ep.episodeNumber, !this.isWatched(tvdbId, ep));
   }
-  watchedInSeason(seasonNumber: number): number {
-    const tvdb = this.show()?.tvdbId;
-    const eps = this.episodes()[seasonNumber];
-    if (!tvdb || !eps) {
-      // fall back to counting from the store even before episodes load
-      return 0;
-    }
-    return eps.filter((e) => this.store.isEpisodeWatched(tvdb, seasonNumber, e.episodeNumber)).length;
+  /** Watched count for a season — 0 until that season's episode list has loaded. */
+  /** True once every episode of a season is watched (hides its "Mark all"). */
+  seasonComplete(tvdbId: string | null, season: { seasonNumber: number; episodeCount: number }): boolean {
+    return (
+      !!tvdbId &&
+      season.episodeCount > 0 &&
+      this.store.watchedInSeason(tvdbId, season.seasonNumber) >= season.episodeCount
+    );
   }
 
   async markSeason(evt: Event, seasonNumber: number): Promise<void> {
     evt.stopPropagation();
     const s = this.show();
-    if (!s?.tvdbId || !this.tmdb2()) return;
-    await this.loadSeason(this.tmdb2()!.id, seasonNumber);
-    const eps = this.episodes()[seasonNumber] ?? [];
-    this.store.markWatchedUpTo(s.tvdbId, seasonNumber, Math.max(...eps.map((e) => e.episodeNumber)), [
-      { season: seasonNumber, episodes: eps.map((e) => e.episodeNumber) },
+    if (!s?.tvdbId || !this.tmdbShow()) return;
+    await this.loadSeason(this.tmdbShow()!.id, seasonNumber);
+    const numbers = (this.episodes()[seasonNumber] ?? []).map((e) => e.episodeNumber);
+    if (!numbers.length) return; // season failed to load — nothing to mark
+    this.store.markWatchedUpTo(s.tvdbId, seasonNumber, Math.max(...numbers), [
+      { season: seasonNumber, episodes: numbers },
     ]);
   }
 
   async markUpTo(tvdbId: string | null, ep: TmdbEpisode): Promise<void> {
-    if (!tvdbId || !this.tmdb2()) return;
+    if (!tvdbId || !this.tmdbShow()) return;
     // ensure all seasons up to this one are loaded
-    const seasons = this.tmdb2()!.seasons.filter((s) => s.seasonNumber <= ep.seasonNumber);
-    for (const s of seasons) await this.loadSeason(this.tmdb2()!.id, s.seasonNumber);
+    const seasons = this.tmdbShow()!.seasons.filter((s) => s.seasonNumber <= ep.seasonNumber);
+    for (const s of seasons) await this.loadSeason(this.tmdbShow()!.id, s.seasonNumber);
     const payload = seasons.map((s) => ({
       season: s.seasonNumber,
       episodes: (this.episodes()[s.seasonNumber] ?? []).map((e) => e.episodeNumber),
@@ -234,7 +237,7 @@ export class ShowDetail {
   /** Mark every episode of every season as watched (used when completing). */
   private async markAllWatched(): Promise<void> {
     const s = this.show();
-    const info = this.tmdb2();
+    const info = this.tmdbShow();
     if (!s?.tvdbId || !info?.seasons.length) return; // no episode data (e.g. no TMDB key)
     this.markingAll.set(true);
     try {

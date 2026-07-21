@@ -39,6 +39,7 @@ export class SyncService {
   private docs = inject(DocService);
   private config = inject(LocalConfigService);
   private provider?: WebrtcProvider;
+  private failTimer?: ReturnType<typeof setTimeout>;
 
   readonly status = signal<SyncStatus>('idle');
   readonly peers = signal(0);
