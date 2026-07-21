@@ -143,59 +143,56 @@ export class LibraryStore {
   // -------------------------------------------------------------------------
   readonly ready = computed(() => !!this.seedSvc.seed());
 
-  /** Episode-watch count per show TVDB id. */
-  private watchedCountByTvdb = computed(() => {
-    const counts: Record<string, number> = {};
-    for (const w of Object.values(this.episodeWatchesSig())) {
-      counts[w.tvdbId] = (counts[w.tvdbId] ?? 0) + 1;
-    }
-    return counts;
-  });
-
   /**
-   * Most recent episode `watchedAt` per show TVDB id. Ticking off an episode
-   * doesn't touch `ShowState.updatedAt` (see setEpisodeWatched), so this is the
-   * only signal of "I watched this show recently" — it's what makes Continue
-   * watching reflect real viewing activity rather than just status edits.
-   */
-  private lastWatchedByTvdb = computed(() => {
-    const latest: Record<string, string> = {};
-    for (const w of Object.values(this.episodeWatchesSig())) {
-      if (!latest[w.tvdbId] || w.watchedAt > latest[w.tvdbId]) latest[w.tvdbId] = w.watchedAt;
-    }
-    return latest;
-  });
-
-  /**
-   * The furthest-along watched episode per show TVDB id — the anchor "what's
-   * next" counts forward from.
+   * Every per-show index derived from the episode-watch map, built in one pass.
    *
-   * Furthest, deliberately, not most-recent-by-date: re-watching an old episode
-   * shouldn't rewind your position, and a backup's `watchedAt` timestamps are
-   * only as trustworthy as the service that wrote them. Season then episode
-   * compare numerically (an episode key sorts as a string, so a plain max over
-   * the keys would put S10 before S9).
+   * These four used to be four computeds, each doing its own full scan — so
+   * ticking a single episode walked a library-sized map (thousands of entries
+   * on a restored backup) four times over. They share one traversal because
+   * they share one input and always invalidate together.
    */
-  readonly furthestWatchedByTvdb = computed(() => {
-    const furthest: Record<string, { season: number; episode: number }> = {};
+  private episodeIndexes = computed(() => {
+    /** Episode-watch count per show TVDB id. */
+    const countByTvdb: Record<string, number> = {};
+    /**
+     * Most recent episode `watchedAt` per show TVDB id. Ticking off an episode
+     * doesn't touch `ShowState.updatedAt` (see setEpisodeWatched), so this is
+     * the only signal of "I watched this show recently" — it's what makes
+     * Continue watching reflect real viewing activity, not just status edits.
+     */
+    const lastWatchedByTvdb: Record<string, string> = {};
+    /**
+     * The furthest-along watched episode per show — the anchor "what's next"
+     * counts forward from.
+     *
+     * Furthest, deliberately, not most-recent-by-date: re-watching an old
+     * episode shouldn't rewind your position, and a backup's `watchedAt`
+     * timestamps are only as trustworthy as the service that wrote them.
+     * Season then episode compare numerically (an episode key sorts as a
+     * string, so a plain max over the keys would put S10 before S9).
+     */
+    const furthestByTvdb: Record<string, { season: number; episode: number }> = {};
+    /** Episode-watch count per `${tvdbId}:${season}` — backs watchedInSeason(). */
+    const countBySeason: Record<string, number> = {};
+
     for (const w of Object.values(this.episodeWatchesSig())) {
-      const cur = furthest[w.tvdbId];
+      countByTvdb[w.tvdbId] = (countByTvdb[w.tvdbId] ?? 0) + 1;
+
+      const seasonKey = `${w.tvdbId}:${w.season}`;
+      countBySeason[seasonKey] = (countBySeason[seasonKey] ?? 0) + 1;
+
+      const last = lastWatchedByTvdb[w.tvdbId];
+      if (!last || w.watchedAt > last) lastWatchedByTvdb[w.tvdbId] = w.watchedAt;
+
+      const cur = furthestByTvdb[w.tvdbId];
       if (!cur || w.season > cur.season || (w.season === cur.season && w.episode > cur.episode)) {
-        furthest[w.tvdbId] = { season: w.season, episode: w.episode };
+        furthestByTvdb[w.tvdbId] = { season: w.season, episode: w.episode };
       }
     }
-    return furthest;
+    return { countByTvdb, lastWatchedByTvdb, furthestByTvdb, countBySeason };
   });
 
-  /** Episode-watch count per `${tvdbId}:${season}` — backs watchedInSeason(). */
-  private watchedCountBySeason = computed(() => {
-    const counts: Record<string, number> = {};
-    for (const w of Object.values(this.episodeWatchesSig())) {
-      const key = `${w.tvdbId}:${w.season}`;
-      counts[key] = (counts[key] ?? 0) + 1;
-    }
-    return counts;
-  });
+  readonly furthestWatchedByTvdb = computed(() => this.episodeIndexes().furthestByTvdb);
 
   /**
    * The browsable show list: the device's catalog plus anything the user added
@@ -208,7 +205,7 @@ export class LibraryStore {
   readonly shows = computed<ShowView[]>(() => {
     const seed = this.seedSvc.seed();
     const state = this.showStateSig();
-    const counts = this.watchedCountByTvdb();
+    const counts = this.episodeIndexes().countByTvdb;
 
     const catalog = seed?.shows ?? [];
     const known = new Set(catalog.map((s) => s.tvdbId).filter(Boolean));
@@ -249,7 +246,7 @@ export class LibraryStore {
    * strings; shows with no watched episode yet fall to the end.
    */
   readonly watchingShows = computed(() => {
-    const lastWatched = this.lastWatchedByTvdb();
+    const lastWatched = this.episodeIndexes().lastWatchedByTvdb;
     const watchedAt = (s: ShowView): string =>
       (s.tvdbId ? lastWatched[s.tvdbId] : undefined) ?? '';
     return this.shows()
@@ -450,7 +447,7 @@ export class LibraryStore {
    * watches) on every change detection.
    */
   watchedInSeason(tvdbId: string, season: number): number {
-    return this.watchedCountBySeason()[`${tvdbId}:${season}`] ?? 0;
+    return this.episodeIndexes().countBySeason[`${tvdbId}:${season}`] ?? 0;
   }
 
   // -------------------------------------------------------------------------
