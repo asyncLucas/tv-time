@@ -3,6 +3,8 @@ import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { TmdbService, TmdbShow } from '../../core/tmdb.service';
 import { Poster } from '../../shared/poster';
+import { TimeLeftPipe } from '../../shared/time-left';
+import { formatDuration } from '../../shared/duration';
 import type { ShowView } from '../../core/models';
 
 interface UpNext {
@@ -12,7 +14,7 @@ interface UpNext {
 
 @Component({
   selector: 'app-home',
-  imports: [RouterLink, Poster],
+  imports: [RouterLink, Poster, TimeLeftPipe],
   template: `
     <div class="page">
       <div class="hello">
@@ -40,7 +42,7 @@ interface UpNext {
           <div class="l">Episodes logged</div>
         </div>
         <div class="stat gold">
-          <div class="n">{{ days() }}<small>d</small></div>
+          <div class="n">{{ lifetime() }}</div>
           <div class="l">Lifetime watched</div>
         </div>
       </div>
@@ -67,7 +69,7 @@ interface UpNext {
                   <div class="un-ep">
                     S{{ u.ep.seasonNumber }}·E{{ u.ep.episodeNumber }} — {{ u.ep.name }}
                   </div>
-                  <div class="un-air">{{ u.ep.airDate }}</div>
+                  <div class="un-air" [title]="u.ep.airDate">{{ u.ep.airDate | timeLeft }}</div>
                 </div>
               </a>
             }
@@ -104,7 +106,7 @@ export class Home {
   readonly watching = computed(() => this.store.watchingShows().slice(0, 18));
   readonly upNext = signal<UpNext[]>([]);
 
-  readonly days = computed(() => Math.round((this.store.stats().lifetimeMinutes || 0) / 60 / 24));
+  readonly lifetime = computed(() => formatDuration(this.store.stats().lifetimeMinutes));
 
   /**
    * Identifies the newest resolve pass. The effect below re-fires on every

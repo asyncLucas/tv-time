@@ -1,8 +1,9 @@
 import { Component, computed, effect, inject, input, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { LibraryStore } from '../core/library.store';
+import { addedKey } from '../core/doc.service';
 import { TmdbService, TmdbSearchResult } from '../core/tmdb.service';
-import { initialsOf } from './initials';
+import { InitialsPipe } from './initials';
 
 /**
  * Discovery: search TMDB for a title that isn't in the catalog yet and add it.
@@ -17,7 +18,7 @@ import { initialsOf } from './initials';
  */
 @Component({
   selector: 'app-title-search',
-  imports: [RouterLink],
+  imports: [RouterLink, InitialsPipe],
   template: `
     @if (query().trim().length >= 2) {
       <section class="ts">
@@ -42,17 +43,19 @@ import { initialsOf } from './initials';
           <div class="ts-grid">
             @for (r of results(); track r.tmdbId) {
               <article class="ts-card">
-                <div class="ts-poster">
-                  @if (posterFor(r); as src) {
-                    <img [src]="src" [alt]="r.name" loading="lazy" />
-                  } @else {
-                    <span class="ts-ph">{{ initials(r.name) }}</span>
-                  }
-                </div>
-                <div class="ts-meta">
-                  <div class="ts-name" [title]="r.name">{{ r.name }}</div>
-                  <div class="ts-year">{{ r.year || '—' }}</div>
-                </div>
+                <a class="ts-open" [routerLink]="detailLink(r)" [title]="'View details for ' + r.name">
+                  <div class="ts-poster">
+                    @if (posterFor(r); as src) {
+                      <img [src]="src" [alt]="r.name" loading="lazy" />
+                    } @else {
+                      <span class="ts-ph">{{ r.name | initials }}</span>
+                    }
+                  </div>
+                  <div class="ts-meta">
+                    <div class="ts-name" [title]="r.name">{{ r.name }}</div>
+                    <div class="ts-year">{{ r.year || '—' }}</div>
+                  </div>
+                </a>
                 @if (store.isInLibrary(kind(), r.tmdbId)) {
                   <button class="ts-add in" disabled>✓ In library</button>
                 } @else {
@@ -112,6 +115,21 @@ import { initialsOf } from './initials';
         display: flex;
         flex-direction: column;
         gap: 8px;
+      }
+      .ts-open {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        color: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+      .ts-open:hover .ts-name {
+        color: var(--gold);
+      }
+      .ts-open:hover .ts-poster {
+        outline: 2px solid var(--gold-soft);
+        outline-offset: 2px;
       }
       .ts-poster {
         position: relative;
@@ -243,8 +261,14 @@ export class TitleSearch {
     return this.tmdb.poster(r.posterPath, 'w185');
   }
 
-  initials(name: string): string {
-    return initialsOf(name);
+  /**
+   * Route to a result's detail page. The uuid is the deterministic added-key, so
+   * the detail page previews it straight from TMDB when it isn't in the library
+   * yet, and resolves to the real entry once it is — same link either way.
+   */
+  detailLink(r: TmdbSearchResult): unknown[] {
+    const kind = this.kind();
+    return ['/', kind === 'show' ? 'shows' : 'movies', addedKey(kind, r.tmdbId)];
   }
 }
 

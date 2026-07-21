@@ -22,6 +22,17 @@ export function addedKey(kind: 'show' | 'movie', tmdbId: number): string {
 }
 
 /**
+ * Inverse of `addedKey`: recover the kind + TMDB id from a uuid. Because the id
+ * is baked into the uuid, a detail page can preview a title straight from TMDB
+ * before it's ever added — the route carries everything needed to fetch it.
+ * Returns null for catalog uuids, which don't follow this scheme.
+ */
+export function parseAddedKey(uuid: string): { kind: 'show' | 'movie'; tmdbId: number } | null {
+  const m = /^tmdb:(show|movie):(\d+)$/.exec(uuid);
+  return m ? { kind: m[1] as 'show' | 'movie', tmdbId: Number(m[2]) } : null;
+}
+
+/**
  * Owns the single Y.Doc that holds all *user state* and its local IndexedDB
  * persistence. The doc is intentionally small — only mergeable facts live here,
  * never the 600KB catalog. Sync providers (Phase 4) attach to this same doc.

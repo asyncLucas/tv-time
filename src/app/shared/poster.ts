@@ -21,9 +21,9 @@ import { initialsOf } from './initials';
 @Component({
   selector: 'app-poster',
   template: `
-    <div class="poster" [class.loaded]="loaded()">
+    <div class="poster">
       @if (src()) {
-        <img [src]="src()!" [alt]="title()" [attr.loading]="eager() ? 'eager' : 'lazy'" (load)="loaded.set(true)" (error)="onError()" />
+        <img [src]="src()!" [alt]="title()" [attr.loading]="eager() ? 'eager' : 'lazy'" (error)="onError()" />
       } @else {
         <div class="ph" [style.background]="gradient()">
           <span>{{ initials() }}</span>
@@ -45,11 +45,14 @@ import { initialsOf } from './initials';
         width: 100%;
         height: 100%;
         object-fit: cover;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-      }
-      .poster.loaded img {
-        opacity: 1;
+        /* The image is always fully opaque and simply appears when it paints.
+           An earlier design faded it in from opacity 0 via a loaded-gated
+           transition/animation — but on Continue watching, returning to the
+           freshly re-rendered grid after marking an episode, that reveal could
+           stall in Chromium (the CSS transition/animation stuck "running" with
+           currentTime frozen at 0), pinning covers at opacity 0 forever. Any
+           opacity-0 entry state carries that risk, so we don't hide the image
+           at all — a blank cover is far worse than a missing fade. */
       }
       .ph {
         width: 100%;
@@ -76,7 +79,6 @@ export class Poster {
   readonly cachedPoster = input<string | null>(null);
 
   readonly src = signal<string | null>(null);
-  readonly loaded = signal(false);
   private resolved = false;
 
   readonly initials = computed(() => initialsOf(this.title()));
@@ -119,10 +121,7 @@ export class Poster {
         posterPath = m?.poster_path ?? null;
       }
       const url = this.tmdb.poster(posterPath, 'w342');
-      if (url) {
-        this.loaded.set(false);
-        this.src.set(url);
-      }
+      if (url) this.src.set(url);
     } catch {
       /* keep fallback */
     }

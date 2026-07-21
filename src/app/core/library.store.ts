@@ -2,7 +2,13 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import * as Y from 'yjs';
 import { DocService, addedKey, epKey } from './doc.service';
 import { SeedService } from './seed.service';
-import { TmdbService, tmdbPosterUrl, type TmdbSearchResult } from './tmdb.service';
+import {
+  TmdbService,
+  tmdbPosterUrl,
+  type TmdbSearchResult,
+  type TmdbShow,
+  type TmdbMovie,
+} from './tmdb.service';
 import type {
   Seed,
   ShowState,
@@ -137,6 +143,20 @@ export class LibraryStore {
     return counts;
   });
 
+  /**
+   * Most recent episode `watchedAt` per show TVDB id. Ticking off an episode
+   * doesn't touch `ShowState.updatedAt` (see setEpisodeWatched), so this is the
+   * only signal of "I watched this show recently" — it's what makes Continue
+   * watching reflect real viewing activity rather than just status edits.
+   */
+  private lastWatchedByTvdb = computed(() => {
+    const latest: Record<string, string> = {};
+    for (const w of Object.values(this.episodeWatchesSig())) {
+      if (!latest[w.tvdbId] || w.watchedAt > latest[w.tvdbId]) latest[w.tvdbId] = w.watchedAt;
+    }
+    return latest;
+  });
+
   /** Episode-watch count per `${tvdbId}:${season}` — backs watchedInSeason(). */
   private watchedCountBySeason = computed(() => {
     const counts: Record<string, number> = {};
@@ -190,7 +210,22 @@ export class LibraryStore {
     }));
   });
 
-  readonly watchingShows = computed(() => this.shows().filter((s) => s.state.status === 'watching'));
+  /**
+   * Shows in progress, most-recently-active first — the Continue watching feed.
+   *
+   * Ordered solely by the show's last-watched episode `watchedAt`, so only
+   * ticking an episode floats a show back to the top (status changes, ratings
+   * and other state edits don't). ISO timestamps sort chronologically as plain
+   * strings; shows with no watched episode yet fall to the end.
+   */
+  readonly watchingShows = computed(() => {
+    const lastWatched = this.lastWatchedByTvdb();
+    const watchedAt = (s: ShowView): string =>
+      (s.tvdbId ? lastWatched[s.tvdbId] : undefined) ?? '';
+    return this.shows()
+      .filter((s) => s.state.status === 'watching')
+      .sort((a, b) => watchedAt(b).localeCompare(watchedAt(a)));
+  });
 
   readonly lists = computed(() => {
     const raw = this.listsSig();
@@ -225,6 +260,20 @@ export class LibraryStore {
       item.uuid ? it.uuid !== item.uuid : it.title !== item.title,
     );
     this.docs.lists.set(listId, { ...list, items });
+  }
+
+  /** Create an empty custom list. Returns its id. */
+  createList(name: string): string {
+    const id = crypto.randomUUID();
+    this.docs.lists.set(id, { name, description: '', createdAt: this.now(), items: [] });
+    return id;
+  }
+
+  /** Rename an existing custom list (no-op if it's gone). */
+  renameList(listId: string, name: string): void {
+    const list = this.docs.lists.get(listId);
+    if (!list) return;
+    this.docs.lists.set(listId, { ...list, name });
   }
 
   /** Delete an entire custom list. */
@@ -275,11 +324,76 @@ export class LibraryStore {
     this.docs.profile.set('updatedAt', this.now());
   }
 
+  /**
+   * Runtime in minutes per watched movie uuid, from the backup. TV Time records
+   * the real runtime it counted, so films are exact where the backup knows them.
+   */
+  private movieMinutesByUuid = computed(() => {
+    const byUuid: Record<string, number> = {};
+    for (const m of this.seedSvc.seed()?.watchedMovies ?? []) {
+      const mins = finiteOr(m.runtimeSec);
+      if (mins != null && mins > 0) byUuid[m.uuid] = Math.round(mins / 60);
+    }
+    return byUuid;
+  });
+
+  /**
+   * Lifetime watch time, recomputed from what you've actually logged — it moves
+   * the moment you tick an episode or mark a film watched.
+   *
+   * Episodes carry no runtime (neither the TV Time backup nor our own watch
+   * records store one), so they're valued at a flat average. Films use their
+   * real runtime when the backup knows it and fall back to an average otherwise.
+   * Rewatches count each time through.
+   */
+  private computedLifetimeMinutes = computed(() => {
+    const movieMinutes = this.movieMinutesByUuid();
+    let total = 0;
+    for (const w of Object.values(this.episodeWatchesSig())) {
+      total += AVG_EPISODE_MINUTES * Math.max(1, finiteOr(w.nbTimes) ?? 1);
+    }
+    for (const m of this.movies()) {
+      if (m.state.watched) total += movieMinutes[m.uuid] ?? AVG_MOVIE_MINUTES;
+    }
+    return total;
+  });
+
+  /**
+   * The part of the imported TV Time total that our own arithmetic can't see.
+   *
+   * TV Time reports a lifetime figure that's usually larger than the sum of the
+   * per-episode rows in the same backup — viewing it counted whose rows didn't
+   * survive the export. Taking `max(imported, derived)` would pin the stat to
+   * that figure and freeze it until you out-watched it, which is exactly the
+   * "not calculating" symptom. So instead we price the backup's OWN rows with
+   * the same arithmetic we use live, and keep only the unexplained remainder as
+   * a fixed offset. New watches then always add on top of it.
+   */
+  private lifetimeOffsetMinutes = computed(() => {
+    const seed = this.seedSvc.seed();
+    const imported =
+      finiteOr(this.profileSig()['lifetimeMinutes']) ??
+      finiteOr(seed?.profile.stats?.['time_spent']) ??
+      0;
+    if (!imported) return 0;
+
+    let seedDerived = 0;
+    for (const e of seed?.watchedEpisodes ?? []) {
+      if (e.seen) seedDerived += AVG_EPISODE_MINUTES * Math.max(1, finiteOr(e.nbTimesWatched) ?? 1);
+    }
+    for (const m of seed?.watchedMovies ?? []) {
+      const mins = finiteOr(m.runtimeSec);
+      seedDerived += mins != null && mins > 0 ? Math.round(mins / 60) : AVG_MOVIE_MINUTES;
+    }
+    return Math.max(0, imported - seedDerived);
+  });
+
   /** Aggregate stats for the profile/dashboard view. */
   readonly stats = computed(() => {
     const shows = this.shows();
     const movies = this.movies();
     const episodeWatches = Object.values(this.episodeWatchesSig());
+    const derived = this.computedLifetimeMinutes();
     return {
       // "my library" = titles the user has actually added, not the whole catalog
       showsFollowed: shows.filter((s) => s.state.status !== 'none').length,
@@ -288,13 +402,10 @@ export class LibraryStore {
       moviesTracked: movies.filter((m) => m.state.watched || m.state.watchlist || m.state.favorite).length,
       moviesWatched: movies.filter((m) => m.state.watched).length,
       episodesWatched: episodeWatches.length,
-      // Lifetime total from TV Time: the synced value wins, else the local
-      // seed's. Type-checked because the synced side is whatever a peer wrote —
-      // a non-number here would turn every derived stat into NaN.
-      lifetimeMinutes:
-        finiteOr(this.profileSig()['lifetimeMinutes']) ??
-        finiteOr(this.seedSvc.seed()?.profile.stats?.['time_spent']) ??
-        0,
+      // Lifetime total: your live watch log plus whatever the TV Time figure
+      // credited you with beyond it. See lifetimeOffsetMinutes — the offset is
+      // constant, so every episode you tick moves this number.
+      lifetimeMinutes: derived + this.lifetimeOffsetMinutes(),
     };
   });
 
@@ -341,9 +452,14 @@ export class LibraryStore {
    * (offline, no key) we fall back to the search row rather than refusing.
    *
    * Returns the uuid so the caller can navigate to the new detail page.
+   *
+   * `prefetched` lets a caller that already loaded the TMDB detail (the preview
+   * detail page) hand it in, skipping a redundant round-trip. Pass `undefined`
+   * — the search flow — to fetch it here.
    */
-  async addShow(result: TmdbSearchResult): Promise<string> {
-    const detail = await this.tmdb.show(result.tmdbId).catch(() => null);
+  async addShow(result: TmdbSearchResult, prefetched?: TmdbShow | null): Promise<string> {
+    const detail =
+      prefetched !== undefined ? prefetched : await this.tmdb.show(result.tmdbId).catch(() => null);
     const uuid = addedKey('show', result.tmdbId);
     const now = this.now();
 
@@ -370,9 +486,13 @@ export class LibraryStore {
     return uuid;
   }
 
-  /** Add a movie found through TMDB search, onto the watchlist. */
-  async addMovie(result: TmdbSearchResult): Promise<string> {
-    const detail = await this.tmdb.movie(result.tmdbId).catch(() => null);
+  /**
+   * Add a movie found through TMDB search, onto the watchlist. `prefetched`
+   * skips the detail round-trip when the caller already has it (see addShow).
+   */
+  async addMovie(result: TmdbSearchResult, prefetched?: TmdbMovie | null): Promise<string> {
+    const detail =
+      prefetched !== undefined ? prefetched : await this.tmdb.movie(result.tmdbId).catch(() => null);
     const uuid = addedKey('movie', result.tmdbId);
     const now = this.now();
 
@@ -470,6 +590,16 @@ export class LibraryStore {
     }
   }
 
+  /**
+   * Mark (or clear) a whole season in one CRDT transaction, so it syncs as a
+   * single change rather than one write per episode.
+   */
+  setSeasonWatched(tvdbId: string, season: number, episodes: number[], watched: boolean): void {
+    this.docs.doc.transact(() => {
+      for (const ep of episodes) this.setEpisodeWatched(tvdbId, season, ep, watched);
+    });
+  }
+
   /** Mark every episode up to and including (season, episode) as watched. */
   markWatchedUpTo(
     tvdbId: string,
@@ -545,6 +675,16 @@ function addedToSeedMovie(a: AddedTitle): SeedMovie {
 
 /** Avatars are stored square at this edge length — small enough to sync cheaply. */
 const AVATAR_PX = 256;
+
+/**
+ * Watch-time pricing for titles whose real runtime we don't have. Episode
+ * runtime is never in the data — not in the TV Time backup, not in our own
+ * watch records — so every episode is priced the same; 42 is the usual midpoint
+ * between half-hour comedies and hour-long dramas once ad breaks come out.
+ * Films only fall back here when the backup omitted their runtime.
+ */
+const AVG_EPISODE_MINUTES = 42;
+const AVG_MOVIE_MINUTES = 115;
 
 /**
  * Narrow an avatar coming out of the CRDT to something safe to put in `[src]`.

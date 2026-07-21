@@ -14,6 +14,15 @@ const POLL_MS = 45_000;
 const PUSH_DEBOUNCE_MS = 2_500;
 /** Safety stop for gist discovery paging (100 per page = 10k gists). */
 const MAX_GIST_PAGES = 100;
+/**
+ * Minimum gap between any two GitHub API calls. GitHub's *primary* limit is a
+ * generous 5k/hour, but a *secondary* "too many requests too quickly" heuristic
+ * trips on bursts (rapid PATCH pushes, or paging every gist on connect). Spacing
+ * calls keeps us clear of it without noticeably slowing normal use.
+ */
+const MIN_REQUEST_GAP_MS = 1_000;
+/** How long to wait when GitHub 403/429s without telling us when to retry. */
+const DEFAULT_BACKOFF_MS = 60_000;
 
 /**
  * Truly-serverless sync through a private GitHub Gist the user owns.
@@ -43,6 +52,13 @@ export class GistSyncService {
   private busy = false;
   private rerun = false;
   private wired = false;
+
+  /** Epoch ms of the last request start — enforces MIN_REQUEST_GAP_MS spacing. */
+  private lastRequestAt = 0;
+  /** Epoch ms before which we must not send anything (set from 403/429 backoff). */
+  private cooldownUntil = 0;
+  /** Tail of the request queue — serializes api() so throttle spacing holds. */
+  private chain: Promise<unknown> = Promise.resolve();
 
   private token(): string | undefined {
     return this.config.get<string>('gistToken')?.trim() || undefined;
@@ -237,30 +253,92 @@ export class GistSyncService {
   }
 
   // -------------------------------------------------------------------------
-  private async api(method: string, path: string, body?: unknown): Promise<unknown> {
-    const res = await fetch(`${API}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${this.token()}`,
-        Accept: 'application/vnd.github+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    if (!res.ok) {
+  /**
+   * Single choke point for every GitHub call, so rate-limit protection lives in
+   * one place. Before sending it (a) waits out any active cooldown from a prior
+   * 403/429 and (b) spaces requests at least MIN_REQUEST_GAP_MS apart to dodge
+   * the "too many requests too quickly" secondary limit. On a rate-limit
+   * response it reads GitHub's own `Retry-After` / `x-ratelimit-reset` headers to
+   * set the next cooldown and retries the call once.
+   *
+   * Calls are serialized through `chain`: a poll `pull()` can overlap a `sync()`,
+   * and without serialization both would read the same `lastRequestAt`, sleep the
+   * same amount and fire together — defeating the spacing. Queuing them makes the
+   * gap (and the shared cooldown) actually hold between concurrent callers.
+   */
+  private api(method: string, path: string, body?: unknown): Promise<unknown> {
+    const result = this.chain.then(() => this.dispatch(method, path, body));
+    // Keep the queue moving even if this call rejects — a failure must not wedge
+    // every later request behind a permanently-rejected tail.
+    this.chain = result.catch(() => undefined);
+    return result;
+  }
+
+  private async dispatch(method: string, path: string, body?: unknown): Promise<unknown> {
+    for (let attempt = 0; ; attempt++) {
+      await this.throttle();
+      const res = await fetch(`${API}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${this.token()}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+
+      if (res.ok) return res.status === 204 ? null : res.json();
       if (res.status === 401) throw new Error('Invalid or expired token');
-      if (res.status === 403) throw new Error('Token lacks the "gist" scope, or rate-limited');
       if (res.status === 404) throw new Error('Gist not found (was it deleted?)');
+
+      // 403 (with rate-limit signal) and 429 mean we've been throttled. Back off
+      // for the window GitHub gives us, then retry once before surfacing an error.
+      const limited = res.status === 429 || (res.status === 403 && this.isRateLimited(res));
+      if (limited && attempt === 0) {
+        this.cooldownUntil = Date.now() + this.backoffMs(res);
+        continue;
+      }
+      if (limited) throw new Error('Rate-limited by GitHub — will retry shortly');
+      if (res.status === 403) throw new Error('Token lacks the "gist" scope');
       throw new Error(`GitHub API ${res.status}`);
     }
-    return res.status === 204 ? null : res.json();
+  }
+
+  /** Wait out any cooldown, then honour the minimum gap between requests. */
+  private async throttle(): Promise<void> {
+    const waitCooldown = this.cooldownUntil - Date.now();
+    if (waitCooldown > 0) await sleep(waitCooldown);
+    const waitGap = this.lastRequestAt + MIN_REQUEST_GAP_MS - Date.now();
+    if (waitGap > 0) await sleep(waitGap);
+    this.lastRequestAt = Date.now();
+  }
+
+  /** A 403 is a rate limit (not a scope problem) when the limit is exhausted. */
+  private isRateLimited(res: Response): boolean {
+    return (
+      res.headers.get('retry-after') !== null ||
+      res.headers.get('x-ratelimit-remaining') === '0'
+    );
+  }
+
+  /** How long to back off, from GitHub's headers, falling back to a fixed wait. */
+  private backoffMs(res: Response): number {
+    const retryAfter = res.headers.get('retry-after');
+    if (retryAfter) return Math.max(0, Number(retryAfter) * 1000);
+    const reset = res.headers.get('x-ratelimit-reset');
+    if (reset) return Math.max(0, Number(reset) * 1000 - Date.now());
+    return DEFAULT_BACKOFF_MS;
   }
 
   private fail(e: any): void {
     this.error.set(String(e?.message ?? e));
     this.status.set('error');
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // --- base64 <-> bytes (binary-safe, no data: URI overhead) ---

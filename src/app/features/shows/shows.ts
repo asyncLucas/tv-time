@@ -47,8 +47,11 @@ type Filter = 'all' | 'watching' | 'completed' | 'watchlist' | 'favorites';
         </div>
       } @else {
         <div class="empty">
-          No shows in your library match
-          @if (q().trim()) { — search TMDB below to add one. } @else { .}
+          @if (q().trim()) {
+            No shows in your library match — search TMDB below to add one.
+          } @else {
+            No shows in your library match.
+          }
         </div>
       }
 

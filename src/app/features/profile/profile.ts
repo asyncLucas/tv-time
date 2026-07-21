@@ -1,8 +1,11 @@
 import { Component, computed, inject, signal } from '@angular/core';
 import { LibraryStore } from '../../core/library.store';
+import { formatDurationLong } from '../../shared/duration';
+import { YearPipe } from '../../shared/year';
 
 @Component({
   selector: 'app-profile',
+  imports: [YearPipe],
   template: `
     <div class="page">
       @if (store.profile(); as p) {
@@ -29,7 +32,7 @@ import { LibraryStore } from '../../core/library.store';
               </h1>
             }
             @if (p.name && p.login) {
-              <div class="sub">&#64;{{ p.login }} · member since {{ p.createdAt?.slice(0, 4) }} · {{ p.timezone }}</div>
+              <div class="sub">&#64;{{ p.login }} · member since {{ p.createdAt | year }} · {{ p.timezone }}</div>
             } @else {
               <div class="sub">Local-first — no account. Your name and picture sync to your own devices.</div>
             }
@@ -42,8 +45,8 @@ import { LibraryStore } from '../../core/library.store';
 
         <div class="grid">
           <div class="tile big gold">
-            <div class="n">{{ hours() }}</div>
-            <div class="l">hours watched (lifetime)</div>
+            <div class="n">{{ lifetime() }}</div>
+            <div class="l">watched (lifetime) · {{ hours() }} hours</div>
           </div>
           <div class="tile">
             <div class="n">{{ s().showsFollowed }}</div>
@@ -284,6 +287,7 @@ export class Profile {
   }
 
   hours = computed(() => Math.round((this.store.stats().lifetimeMinutes || 0) / 60).toLocaleString());
+  lifetime = computed(() => formatDurationLong(this.store.stats().lifetimeMinutes));
 
   topGenres = computed(() => {
     const counts: Record<string, number> = {};

@@ -1,3 +1,5 @@
+import { Pipe, PipeTransform } from '@angular/core';
+
 /**
  * Leading articles stripped before deriving initials, so "The Office" reads as
  * "OF" rather than "TO". Covers English and Portuguese — TV Time backups from
@@ -19,4 +21,16 @@ export function initialsOf(title: string | null | undefined): string {
     .map((word) => word[0] ?? '')
     .join('')
     .toUpperCase();
+}
+
+/**
+ * Template form of `initialsOf`. Pure, so placeholder initials are computed once
+ * per distinct title instead of on every change-detection pass — worthwhile in
+ * the list/search grids where it renders once per row.
+ */
+@Pipe({ name: 'initials' })
+export class InitialsPipe implements PipeTransform {
+  transform(title: string | null | undefined): string {
+    return initialsOf(title);
+  }
 }

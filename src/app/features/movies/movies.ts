@@ -3,13 +3,14 @@ import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { Poster } from '../../shared/poster';
 import { TitleSearch } from '../../shared/title-search';
+import { YearPipe } from '../../shared/year';
 import type { MovieView } from '../../core/models';
 
 type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
 
 @Component({
   selector: 'app-movies',
-  imports: [Poster, RouterLink, TitleSearch],
+  imports: [Poster, RouterLink, TitleSearch, YearPipe],
   template: `
     <div class="page">
       <div class="page-head">
@@ -60,14 +61,17 @@ type Filter = 'all' | 'watched' | 'watchlist' | 'favorites';
                 </div>
               </div>
               <a class="name" [routerLink]="['/movies', m.uuid]">{{ m.name }}</a>
-              <div class="yr">{{ year(m) }}</div>
+              <div class="yr">{{ m.firstReleaseDate | year }}</div>
             </div>
           }
         </div>
       } @else {
         <div class="empty">
-          No films in your library match
-          @if (q().trim()) { — search TMDB below to add one. } @else { .}
+          @if (q().trim()) {
+            No films in your library match — search TMDB below to add one.
+          } @else {
+            No films in your library match.
+          }
         </div>
       }
 
@@ -190,8 +194,5 @@ export class Movies {
     if (f === 'watched') return ms.filter((m) => m.state.watched).length;
     if (f === 'watchlist') return ms.filter((m) => m.state.watchlist && !m.state.watched).length;
     return ms.filter((m) => m.state.favorite).length;
-  }
-  year(m: MovieView): string {
-    return m.firstReleaseDate?.slice(0, 4) ?? '';
   }
 }
