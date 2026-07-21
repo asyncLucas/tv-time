@@ -32,6 +32,7 @@ export class LibraryStore {
   private episodeWatchesSig = signal<Record<string, EpisodeWatch>>({});
   private listsSig = signal<Record<string, any>>({});
   private settingsSig = signal<Record<string, any>>({});
+  private profileSig = signal<Record<string, any>>({});
 
   private started = false;
 
@@ -51,6 +52,7 @@ export class LibraryStore {
     this.bind(this.docs.episodeWatches, this.episodeWatchesSig);
     this.bind(this.docs.lists, this.listsSig);
     this.bind(this.docs.settings, this.settingsSig);
+    this.bind(this.docs.profile, this.profileSig);
   }
 
   private bind<T>(map: Y.Map<T>, sig: ReturnType<typeof signal<Record<string, T>>>): void {
@@ -134,7 +136,81 @@ export class LibraryStore {
     return Object.entries(raw).map(([id, v]) => ({ id, ...(v as any) }));
   });
 
-  readonly profile = computed(() => this.seedSvc.seed()?.profile ?? null);
+  /** Resolve a custom-list item to the catalog movie/show it points at. */
+  resolveListItem(item: { uuid?: string | null; title?: string | null }): {
+    type: 'movie' | 'show';
+    uuid: string;
+    name: string;
+    tvdbId: string | null;
+    imdbId: string | null;
+    cachedPoster: string | null;
+  } | null {
+    if (item.uuid) {
+      const m = this.seedSvc.getMovie(item.uuid);
+      if (m)
+        return { type: 'movie', uuid: m.uuid, name: m.name, tvdbId: m.tvdbId, imdbId: m.imdbId, cachedPoster: null };
+      const s = this.seedSvc.getShow(item.uuid);
+      if (s)
+        return { type: 'show', uuid: s.uuid, name: s.name, tvdbId: s.tvdbId, imdbId: null, cachedPoster: s.cachedPoster };
+    }
+    return null;
+  }
+
+  /** Remove an item from a custom list (matched by uuid, else title). */
+  removeListItem(listId: string, item: { uuid?: string | null; title?: string | null }): void {
+    const list = this.docs.lists.get(listId);
+    if (!list?.items) return;
+    const items = list.items.filter((it: any) =>
+      item.uuid ? it.uuid !== item.uuid : it.title !== item.title,
+    );
+    this.docs.lists.set(listId, { ...list, items });
+  }
+
+  /** Delete an entire custom list. */
+  deleteList(listId: string): void {
+    this.docs.lists.delete(listId);
+  }
+
+  /**
+   * The profile the UI shows: the device-local seed profile with any synced
+   * CRDT edits layered on top. Editing never touches the seed, so the imported
+   * backup stays a pristine record of what TV Time had.
+   */
+  readonly profile = computed(() => {
+    const seed = this.seedSvc.seed()?.profile ?? null;
+    const edits = this.profileSig();
+    if (!seed && !Object.keys(edits).length) return null;
+    return {
+      ...(seed ?? EMPTY_PROFILE),
+      ...(edits['name'] !== undefined ? { name: edits['name'] } : {}),
+      ...(edits['image'] !== undefined ? { image: edits['image'] } : {}),
+    };
+  });
+
+  /** Rename the profile. Empty string clears back to the seed's name. */
+  setProfileName(name: string): void {
+    const trimmed = name.trim();
+    if (trimmed) this.docs.profile.set('name', trimmed);
+    else this.docs.profile.delete('name');
+    this.docs.profile.set('updatedAt', this.now());
+  }
+
+  /**
+   * Set the avatar from a picked file. The image is downscaled to a small
+   * square data URI first — it lives in the CRDT and therefore in every sync
+   * payload, so keeping it tiny matters more than keeping it sharp.
+   */
+  async setProfileImage(file: File): Promise<void> {
+    const dataUri = await downscaleToDataUri(file, AVATAR_PX);
+    this.docs.profile.set('image', dataUri);
+    this.docs.profile.set('updatedAt', this.now());
+  }
+
+  /** Drop the custom avatar (falls back to the seed's, if any). */
+  clearProfileImage(): void {
+    this.docs.profile.delete('image');
+    this.docs.profile.set('updatedAt', this.now());
+  }
 
   /** Aggregate stats for the profile/dashboard view. */
   readonly stats = computed(() => {
@@ -258,5 +334,51 @@ export class LibraryStore {
   /** Neutral: a catalog title is "not in my library" until the user adds it. */
   private defaultMovieState(): MovieState {
     return { watched: false, watchedAt: null, watchlist: false, favorite: false, rating: null, updatedAt: null };
+  }
+}
+
+/** Avatars are stored square at this edge length — small enough to sync cheaply. */
+const AVATAR_PX = 256;
+
+/** Stand-in when the device has no seed but the user has edited their profile. */
+const EMPTY_PROFILE = {
+  id: 0,
+  login: '',
+  name: '',
+  image: null as string | null,
+  timezone: null,
+  lang: 'en',
+  createdAt: null,
+  favoriteGenres: [] as unknown[],
+  stats: {} as Record<string, number>,
+};
+
+/**
+ * Center-crop an image file to a square and re-encode it as a JPEG data URI.
+ * Runs entirely in-browser (no upload target exists — the app has no backend).
+ */
+async function downscaleToDataUri(file: File, size: number): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('That file is not an image.');
+  const bitmap = await createImageBitmap(file);
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not process the image on this device.');
+    const edge = Math.min(bitmap.width, bitmap.height);
+    ctx.drawImage(
+      bitmap,
+      (bitmap.width - edge) / 2,
+      (bitmap.height - edge) / 2,
+      edge,
+      edge,
+      0,
+      0,
+      size,
+      size,
+    );
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } finally {
+    bitmap.close();
   }
 }

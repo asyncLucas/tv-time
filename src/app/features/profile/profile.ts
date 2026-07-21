@@ -1,4 +1,4 @@
-import { Component, computed, inject } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { LibraryStore } from '../../core/library.store';
 
 @Component({
@@ -7,19 +7,38 @@ import { LibraryStore } from '../../core/library.store';
     <div class="page">
       @if (store.profile(); as p) {
         <div class="head">
-          @if (p.name) {
-            @if (p.image) { <img class="avatar" [src]="p.image" [alt]="p.name" /> }
-            <div>
-              <h1>{{ p.name }}</h1>
+          <button class="avatar-btn" (click)="picker.click()" [disabled]="busy()"
+                  [title]="p.image ? 'Change picture' : 'Add a picture'">
+            @if (p.image) {
+              <img class="avatar" [src]="p.image" [alt]="p.name || 'Profile picture'" />
+            } @else {
+              <span class="avatar placeholder">{{ initial(p.name) }}</span>
+            }
+            <span class="avatar-hint">{{ busy() ? '…' : 'Edit' }}</span>
+          </button>
+          <input #picker type="file" accept="image/*" hidden (change)="onPick($event)" />
+
+          <div>
+            @if (editing()) {
+              <input class="name-input" [value]="p.name" placeholder="Your name" autofocus
+                     (keydown.enter)="saveName($any($event.target).value)"
+                     (blur)="saveName($any($event.target).value)" />
+            } @else {
+              <h1 class="name" (click)="editing.set(true)" title="Click to rename">
+                {{ p.name || 'Your stats' }}
+              </h1>
+            }
+            @if (p.name && p.login) {
               <div class="sub">&#64;{{ p.login }} · member since {{ p.createdAt?.slice(0, 4) }} · {{ p.timezone }}</div>
-            </div>
-          } @else {
-            <div>
-              <h1>Your stats</h1>
-              <div class="sub">Local-first — no account, no profile. Everything below is just yours.</div>
-            </div>
-          }
+            } @else {
+              <div class="sub">Local-first — no account. Your name and picture sync to your own devices.</div>
+            }
+            @if (p.image) {
+              <button class="link" (click)="store.clearProfileImage()">Remove picture</button>
+            }
+          </div>
         </div>
+        @if (error(); as e) { <div class="err">{{ e }}</div> }
 
         <div class="grid">
           <div class="tile big gold">
@@ -82,6 +101,71 @@ import { LibraryStore } from '../../core/library.store';
         border-radius: 50%;
         object-fit: cover;
         border: 2px solid var(--gold);
+        display: block;
+      }
+      .avatar.placeholder {
+        display: grid;
+        place-items: center;
+        background: var(--bg-elev-2);
+        color: var(--gold);
+        font-size: 28px;
+        font-weight: 800;
+      }
+      .avatar-btn {
+        position: relative;
+        padding: 0;
+        border: 0;
+        background: none;
+        cursor: pointer;
+        border-radius: 50%;
+        line-height: 0;
+      }
+      .avatar-btn:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      .avatar-hint {
+        position: absolute;
+        inset: auto 0 0 0;
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 18px;
+        border-radius: 0 0 36px 36px;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .avatar-btn:hover .avatar-hint,
+      .avatar-btn:focus-visible .avatar-hint {
+        opacity: 1;
+      }
+      .name {
+        cursor: text;
+      }
+      .name-input {
+        font-size: 26px;
+        font-weight: 800;
+        background: var(--bg-elev);
+        color: inherit;
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 2px 8px;
+      }
+      .link {
+        background: none;
+        border: 0;
+        padding: 0;
+        margin-top: 6px;
+        color: var(--text-faint);
+        font-size: 12px;
+        cursor: pointer;
+        text-decoration: underline;
+      }
+      .err {
+        color: #ff6b6b;
+        font-size: 13px;
+        margin: -20px 0 24px;
       }
       .head h1 {
         font-size: 26px;
@@ -169,6 +253,35 @@ import { LibraryStore } from '../../core/library.store';
 export class Profile {
   store = inject(LibraryStore);
   s = this.store.stats;
+
+  editing = signal(false);
+  busy = signal(false);
+  error = signal<string | null>(null);
+
+  initial(name: string): string {
+    return name.trim().charAt(0).toUpperCase() || '?';
+  }
+
+  saveName(value: string): void {
+    this.store.setProfileName(value);
+    this.editing.set(false);
+  }
+
+  async onPick(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // let the same file be re-picked after an error
+    if (!file) return;
+    this.busy.set(true);
+    this.error.set(null);
+    try {
+      await this.store.setProfileImage(file);
+    } catch (e: any) {
+      this.error.set(String(e?.message ?? e));
+    } finally {
+      this.busy.set(false);
+    }
+  }
 
   hours = computed(() => Math.round((this.store.stats().lifetimeMinutes || 0) / 60).toLocaleString());
 

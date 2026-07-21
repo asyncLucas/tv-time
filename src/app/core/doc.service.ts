@@ -37,6 +37,13 @@ export class DocService {
   readonly lists = this.doc.getMap<any>('lists');
   /** app settings (tmdb api key, sync room, etc.) */
   readonly settings = this.doc.getMap<any>('settings');
+  /**
+   * User-editable profile (name, avatar). Lives in the CRDT — not the seed —
+   * so edits travel between devices. The avatar is a small downscaled data URI
+   * (see LibraryStore.setProfileImage); keeping it here means sync providers
+   * carry it for free, at the cost of a few tens of KB in the doc.
+   */
+  readonly profile = this.doc.getMap<any>('profile');
   /** bookkeeping (schema version, bootstrap flag) */
   readonly meta = this.doc.getMap<any>('meta');
 
@@ -133,6 +140,7 @@ export class DocService {
         addedShows: this.addedShows.toJSON(),
         lists: this.lists.toJSON(),
         settings: this.settings.toJSON(),
+        profile: this.profile.toJSON(),
       },
       null,
       2,
@@ -155,6 +163,7 @@ export class DocService {
       apply(this.addedShows, data.addedShows);
       apply(this.lists, data.lists);
       apply(this.settings, data.settings);
+      apply(this.profile, data.profile);
     });
   }
 }
