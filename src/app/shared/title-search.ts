@@ -2,7 +2,7 @@ import { Component, computed, effect, inject, input, signal } from '@angular/cor
 import { Router, RouterLink } from '@angular/router';
 import { LibraryStore } from '../core/library.store';
 import { addedKey } from '../core/doc.service';
-import { TmdbService, TmdbSearchResult } from '../core/tmdb.service';
+import { TMDB_UNREACHABLE, TmdbService, TmdbSearchResult } from '../core/tmdb.service';
 import { InitialsPipe } from './initials';
 
 /**
@@ -235,7 +235,7 @@ export class TitleSearch {
     } catch {
       if (run !== this.runId) return;
       this.results.set([]);
-      this.error.set('Could not reach TMDB. Check your connection and try again.');
+      this.error.set(TMDB_UNREACHABLE);
     } finally {
       if (run === this.runId) this.searching.set(false);
     }

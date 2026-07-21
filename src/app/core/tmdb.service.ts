@@ -152,6 +152,12 @@ function parseWatchProviders(node: any, region: string): WatchProviders | null {
 
 const CACHE = 'tmdb-v1';
 const TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days for JSON
+
+/**
+ * What the UI shows when a TMDB request fails. One string, because every
+ * caller means the same thing by it and they were drifting apart.
+ */
+export const TMDB_UNREACHABLE = 'Could not reach TMDB. Check your connection and try again.';
 /** Shorter query strings only return noise, so they never reach the API. */
 const MIN_QUERY_LENGTH = 2;
 const MAX_SEARCH_RESULTS = 20;

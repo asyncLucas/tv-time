@@ -2,7 +2,8 @@ import { Component, computed, effect, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { LibraryStore } from '../../core/library.store';
 import { addedKey } from '../../core/doc.service';
-import { TmdbService, TmdbSearchResult } from '../../core/tmdb.service';
+import { TrendingStore } from '../../core/trending.store';
+import { TmdbService } from '../../core/tmdb.service';
 import { Poster } from '../../shared/poster';
 import { InitialsPipe } from '../../shared/initials';
 import { TitleSearch } from '../../shared/title-search';
@@ -254,11 +255,11 @@ export class Movies {
   q = signal('');
   filter = signal<Filter>('all');
 
-  readonly trending = signal<TmdbSearchResult[]>([]);
-  readonly loadingTrending = signal(false);
-  readonly trendingError = signal<string | null>(null);
-  /** Guards the one-shot fetch: opening the tab again reuses what we already have. */
-  private trendingLoaded = false;
+  /** This week's trending films — fetched once, app-wide (see TrendingStore). */
+  private readonly feed = inject(TrendingStore).movies;
+  readonly trending = this.feed.results;
+  readonly loadingTrending = this.feed.loading;
+  readonly trendingError = this.feed.error;
 
   readonly addedKey = addedKey;
 
@@ -271,25 +272,11 @@ export class Movies {
   ];
 
   constructor() {
-    // Nothing is fetched until the Trending tab is actually opened.
+    // Nothing is fetched until the Trending tab is actually opened. The store
+    // ignores a repeat call, so this needs no guard of its own.
     effect(() => {
-      if (this.filter() !== 'trending' || !this.tmdb.hasKey() || this.trendingLoaded) return;
-      this.trendingLoaded = true;
-      void this.loadTrending();
+      if (this.filter() === 'trending') this.feed.load();
     });
-  }
-
-  private async loadTrending(): Promise<void> {
-    this.loadingTrending.set(true);
-    this.trendingError.set(null);
-    try {
-      this.trending.set(await this.tmdb.trendingMovies());
-    } catch {
-      this.trendingLoaded = false; // let a re-open retry
-      this.trendingError.set('Could not reach TMDB. Check your connection and try again.');
-    } finally {
-      this.loadingTrending.set(false);
-    }
   }
 
   filtered = computed<MovieView[]>(() => {
