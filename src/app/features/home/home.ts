@@ -8,6 +8,7 @@ import {
   untracked,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
+import { epKey, seasonKey } from '../../core/doc.service';
 import { LibraryStore } from '../../core/library.store';
 import { TmdbService, TmdbShow } from '../../core/tmdb.service';
 import { Poster } from '../../shared/poster';
@@ -227,10 +228,10 @@ export class Home {
       const next = advance(furthest[tvdbId], list);
       if (!next) continue; // watched through the last aired episode
 
-      const m = meta[`${tvdbId}:${next.season}:${next.episode}`];
+      const m = meta[epKey(tvdbId, next.season, next.episode)];
       const code = `S${next.season}·E${next.episode}`;
       rows.push({
-        key: `${tvdbId}:${next.season}:${next.episode}`,
+        key: epKey(tvdbId, next.season, next.episode),
         show,
         tvdbId,
         season: next.season,
@@ -327,9 +328,9 @@ export class Home {
     for (const n of rows) {
       // One fetch per (show, season), even when the rail later advances to
       // another episode of a season already pulled.
-      const seasonKey = `${n.tvdbId}:${n.season}`;
-      if (this.probedSeasons.has(seasonKey)) continue;
-      this.probedSeasons.add(seasonKey);
+      const key = seasonKey(n.tvdbId, n.season);
+      if (this.probedSeasons.has(key)) continue;
+      this.probedSeasons.add(key);
       try {
         const tmdbId = await this.tmdb.tmdbIdForTvdb(n.tvdbId);
         if (tmdbId == null) continue;
@@ -338,7 +339,7 @@ export class Home {
         this.epMeta.update((cur) => {
           const next = { ...cur };
           for (const e of eps) {
-            next[`${n.tvdbId}:${e.seasonNumber}:${e.episodeNumber}`] = {
+            next[epKey(n.tvdbId, e.seasonNumber, e.episodeNumber)] = {
               title: e.name,
               airDate: e.airDate ?? null,
             };

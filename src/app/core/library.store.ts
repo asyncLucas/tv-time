@@ -1,6 +1,6 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import * as Y from 'yjs';
-import { DocService, addedKey, epKey } from './doc.service';
+import { DocService, addedKey, epKey, seasonKey } from './doc.service';
 import { SeedService } from './seed.service';
 import {
   TmdbService,
@@ -178,8 +178,8 @@ export class LibraryStore {
     for (const w of Object.values(this.episodeWatchesSig())) {
       countByTvdb[w.tvdbId] = (countByTvdb[w.tvdbId] ?? 0) + 1;
 
-      const seasonKey = `${w.tvdbId}:${w.season}`;
-      countBySeason[seasonKey] = (countBySeason[seasonKey] ?? 0) + 1;
+      const sKey = seasonKey(w.tvdbId, w.season);
+      countBySeason[sKey] = (countBySeason[sKey] ?? 0) + 1;
 
       const last = lastWatchedByTvdb[w.tvdbId];
       if (!last || w.watchedAt > last) lastWatchedByTvdb[w.tvdbId] = w.watchedAt;
@@ -447,7 +447,7 @@ export class LibraryStore {
    * watches) on every change detection.
    */
   watchedInSeason(tvdbId: string, season: number): number {
-    return this.episodeIndexes().countBySeason[`${tvdbId}:${season}`] ?? 0;
+    return this.episodeIndexes().countBySeason[seasonKey(tvdbId, season)] ?? 0;
   }
 
   // -------------------------------------------------------------------------

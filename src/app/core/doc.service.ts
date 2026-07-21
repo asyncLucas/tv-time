@@ -7,7 +7,16 @@ export const DB_NAME = 'tvtime-revival';
 
 /** Stable key for an episode watch within the CRDT. */
 export function epKey(tvdbId: string, season: number, episode: number): string {
-  return `${tvdbId}:${season}:${episode}`;
+  return `${seasonKey(tvdbId, season)}:${episode}`;
+}
+
+/**
+ * Stable key for a show-season. Not itself a CRDT key — it keys the per-season
+ * indexes and caches derived from episode watches, and shares `epKey`'s prefix
+ * so the two can never drift apart.
+ */
+export function seasonKey(tvdbId: string, season: number): string {
+  return `${tvdbId}:${season}`;
 }
 
 /**
