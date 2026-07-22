@@ -1,0 +1,92 @@
+@if (ready() && !hasLibrary()) {
+  <app-onboarding />
+} @else if (ready()) {
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">tv</span>
+        <div class="brand-text">
+          <strong>TV&nbsp;Time</strong>
+          <small>revival</small>
+        </div>
+      </div>
+
+      <nav class="nav">
+        @for (item of nav; track item.path) {
+          <a
+            [routerLink]="['/' + item.path]"
+            routerLinkActive="active"
+            [routerLinkActiveOptions]="{ exact: item.exact }"
+          >
+            <lucide-icon [img]="item.icon" class="ic" [size]="20" [strokeWidth]="2" />
+            <span class="lbl">{{ item.label }}</span>
+          </a>
+        }
+      </nav>
+
+      @if (pwa.canInstall()) {
+        <button class="install" (click)="pwa.promptInstall()">
+          <lucide-icon [img]="DownloadIcon" [size]="17" /><span class="lbl">Install app</span>
+        </button>
+      }
+
+      <div class="sync-badge" [class.on]="gist.status() === 'synced' || sync.connected()" [class.err]="gist.status() === 'error'">
+        <span class="dot"></span>
+        @if (gist.enabled()) {
+          @switch (gist.status()) {
+            @case ('synced') { cloud synced }
+            @case ('syncing') { syncing… }
+            @case ('error') { sync error }
+            @default { cloud sync }
+          }
+        } @else if (sync.connected()) {
+          {{ sync.peers() }} peer(s)
+        } @else {
+          local only
+        }
+      </div>
+    </aside>
+
+    <main class="content">
+      <router-outlet />
+    </main>
+
+    @if (pwa.showInstallBanner()) {
+      <div class="install-banner" [class.ios]="!pwa.canInstall()">
+        <span class="ib-mark">tv</span>
+        <div class="ib-text">
+          <strong>Install TV Time</strong>
+          @if (pwa.canInstall()) {
+            <small>Add to your home screen — works offline</small>
+          } @else {
+            <!-- iOS: no programmatic install, so point at the Share sheet -->
+            <small>Tap <lucide-icon [img]="ShareIcon" [size]="13" class="ib-ic" /> Share, then
+              <strong>Add to Home Screen</strong></small>
+          }
+        </div>
+        @if (pwa.canInstall()) {
+          <button class="ib-install" (click)="pwa.promptInstall()">Install</button>
+        }
+        <button class="ib-close" (click)="pwa.dismissInstall()" aria-label="Dismiss">
+          <lucide-icon [img]="XIcon" [size]="16" />
+        </button>
+      </div>
+    }
+
+    @if (pwa.updateReady()) {
+      <div class="update-toast">
+        <span>Updating to the latest version…</span>
+      </div>
+    }
+  </div>
+} @else if (error()) {
+  <div class="boot boot-error">
+    <h1>Couldn't load your library</h1>
+    <p>{{ error() }}</p>
+  </div>
+} @else {
+  <div class="boot">
+    <div class="pulse">tv</div>
+    <p>Restoring your library…</p>
+  </div>
+}

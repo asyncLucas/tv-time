@@ -1,0 +1,331 @@
+@use '../title-detail';
+
+.hero {
+  position: relative;
+  background-size: cover;
+  background-position: center 20%;
+  padding: 0;
+}
+.hero .poster {
+  width: 180px;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  flex-shrink: 0;
+  background: var(--bg-elev-2);
+}
+.info h1 {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+}
+/* "In library" toggle — occupies the same slot as "Add to library"; hovering
+   reveals its remove action so the button reads as an on/off control. */
+.btn.in-lib {
+  background: rgba(74, 194, 107, 0.14);
+  border-color: transparent;
+  color: #4ac26b;
+}
+.btn.in-lib .lbl-out {
+  display: none;
+}
+.btn.in-lib:hover {
+  background: rgba(248, 81, 73, 0.16);
+  color: #f85149;
+}
+.btn.in-lib:hover .lbl-in {
+  display: none;
+}
+.btn.in-lib:hover .lbl-out {
+  display: inline;
+}
+
+.status-sel {
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 9px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.progress .bar {
+  flex: 1;
+  max-width: 320px;
+  height: 6px;
+  background: var(--bg-elev-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress .fill {
+  height: 100%;
+  background: var(--gold);
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.marking {
+  margin-top: 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.body {
+  padding: 12px calc(40px + var(--safe-right)) 64px calc(40px + var(--safe-left));
+  max-width: 900px;
+}
+.season {
+  border-bottom: 1px solid var(--line-soft);
+}
+.season header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 4px;
+  cursor: pointer;
+}
+.s-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.caret {
+  display: inline-block;
+  transition: transform 0.15s ease;
+  color: var(--text-faint);
+}
+.caret.open {
+  transform: rotate(90deg);
+}
+.s-count {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-weight: 600;
+}
+.btn.sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* Season watched toggle: a hollow gold ring that fills once every episode of
+   the season is watched. Always present, so it doubles as a status readout. */
+.s-mark {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--gold);
+  background: transparent;
+  color: transparent;
+  transition: all 0.15s ease;
+}
+.s-mark svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.s-mark:hover {
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+.s-mark.done {
+  background: var(--gold);
+  color: #1a1600;
+}
+.s-mark.done:hover {
+  filter: brightness(1.08);
+  color: #1a1600;
+}
+.s-mark:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+.s-mark:disabled {
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+.s-mark:disabled:hover {
+  background: transparent;
+  color: transparent;
+}
+.eps {
+  padding: 4px 0 16px;
+}
+.ep {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 8px;
+  border-radius: 8px;
+}
+.ep:hover {
+  background: var(--bg-elev);
+}
+.tick {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  color: var(--good);
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.ep.watched .tick {
+  background: var(--good);
+  border-color: var(--good);
+  color: #04120c;
+}
+.ep-num {
+  width: 26px;
+  color: var(--text-faint);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+}
+.ep-main {
+  flex: 1;
+  min-width: 0;
+}
+.ep-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.ep.watched .ep-name {
+  color: var(--text-dim);
+}
+.ep-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+.ep-seen {
+  color: var(--good);
+  font-weight: 600;
+}
+
+/* TMDB's community score — muted, so it reads as reference next to the
+   gold badge that is the user's own opinion. */
+.ep-score {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The user's own rating. Always present so every episode is one tap from
+   being rated; it just stays hollow until there's a score to show. */
+.ep-rate {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition: all 0.14s ease;
+}
+.ep-rate .val:empty {
+  display: none;
+}
+.ep-rate:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.ep-rate.rated {
+  border-color: transparent;
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+.ep-rate:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+/* Outcome of the last episode rating, including whether TMDB took it. */
+.rate-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.rate-dismiss {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.rate-dismiss:hover {
+  color: var(--text);
+}
+
+.empty.sm {
+  padding: 12px 0;
+  text-align: left;
+}
+
+@media (max-width: 720px) {
+  .hero-inner {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 16px calc(20px + var(--safe-right)) 28px calc(20px + var(--safe-left));
+  }
+  .back {
+    margin-left: calc(20px + var(--safe-left));
+  }
+  .hero .poster {
+    width: 120px;
+  }
+  .info h1 {
+    font-size: 26px;
+  }
+  .body {
+    padding: 12px calc(20px + var(--safe-right)) 80px calc(20px + var(--safe-left));
+  }
+}

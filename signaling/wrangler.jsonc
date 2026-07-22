@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+
+  // Must match the existing Worker so `wrangler deploy` updates
+  // https://tv-time.lucasluizss.workers.dev/ in place.
+  "name": "tv-time",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-01",
+
+  "observability": {
+    "enabled": true
+  },
+
+  // One binding, one class. `env.ROOMS` is the DurableObjectNamespace the
+  // Worker uses to route each room to its own instance.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ROOMS",
+        "class_name": "Room"
+      }
+    ]
+  },
+
+  // SQLite-backed Durable Objects. `new_sqlite_classes` is required to create a
+  // brand-new DO namespace and puts it on the cheaper SQLite storage tier — even
+  // though this signaling server keeps the store empty and relies on hibernation
+  // + socket attachments instead of writing rows.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["Room"]
+    }
+  ]
+}
