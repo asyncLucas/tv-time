@@ -48,6 +48,7 @@ export interface TmdbShow {
   tvdbId: string | null;
   /** IMDb id, when TMDB knows it — used to build a Stremio deep link. */
   imdbId: string | null;
+  cast: { id: number; name: string; character: string; profilePath: string | null }[];
   /** Streaming/rental availability in the viewer's region, or null if unknown. */
   watchProviders: WatchProviders | null;
 }
@@ -427,7 +428,7 @@ export class TmdbService {
     // external_ids rides along on the same request: adding a show from search
     // needs its TheTVDB id, and a second round-trip for it would be wasteful.
     const d = await this.get(
-      `/tv/${tmdbId}?append_to_response=next_episode_to_air,external_ids,watch/providers`,
+      `/tv/${tmdbId}?append_to_response=next_episode_to_air,external_ids,credits,watch/providers`,
     );
     if (!d) return null;
     const tvdb = d.external_ids?.tvdb_id;
@@ -452,6 +453,12 @@ export class TmdbService {
           episodeCount: s.episode_count,
           name: s.name,
         })),
+      cast: (d.credits?.cast ?? []).slice(0, 12).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        character: c.character,
+        profilePath: c.profile_path,
+      })),
       nextEpisode: mapEpisode(d.next_episode_to_air),
       lastEpisode: mapEpisode(d.last_episode_to_air),
     };

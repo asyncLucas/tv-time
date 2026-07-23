@@ -18,10 +18,11 @@ import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EpisodeRatingDialog } from '../../shared/episode-rating-dialog';
 import { YearPipe } from '../../shared/year';
 import { stremioUrl, openStremio } from '../../shared/stremio';
+import { WheelX } from '../../shared/wheel-x';
 
 @Component({
   selector: 'app-show-detail',
-  imports: [RouterLink, ConfirmDialog, EpisodeRatingDialog, YearPipe],
+  imports: [RouterLink, ConfirmDialog, EpisodeRatingDialog, YearPipe, WheelX],
   template: `
     @if (show(); as s) {
       <div class="detail">
@@ -136,6 +137,22 @@ import { stremioUrl, openStremio } from '../../shared/stremio';
                 ✕
               </button>
             </p>
+          }
+          @if (castRows().length) {
+            <h2 class="sec">Cast</h2>
+            <div class="cast-rail" appWheelX>
+              @for (c of castRows(); track c.name) {
+                <a class="person" [href]="c.url" target="_blank" rel="noopener" [title]="'View ' + c.name + ' on TMDB'">
+                  @if (c.img) {
+                    <img [src]="c.img" [alt]="c.name" loading="lazy" decoding="async" />
+                  } @else {
+                    <div class="ph">{{ c.initial }}</div>
+                  }
+                  <div class="p-name">{{ c.name }}</div>
+                  <div class="p-char">{{ c.character }}</div>
+                </a>
+              }
+            </div>
           }
           @if (!tmdb.hasKey()) {
             <div class="notice">
@@ -346,6 +363,17 @@ export class ShowDetail {
 
   /** A Stremio Web link for this show, once its IMDb id is known. */
   readonly stremioUrl = computed(() => stremioUrl('series', this.tmdbShow()?.imdbId ?? null));
+
+  /** Cast with headshot URLs and placeholder initials resolved once. */
+  readonly castRows = computed(() =>
+    (this.tmdbShow()?.cast ?? []).map((c) => ({
+      name: c.name,
+      character: c.character,
+      img: this.tmdb.profileImg(c.profilePath),
+      initial: c.name.slice(0, 1),
+      url: `https://www.themoviedb.org/person/${c.id}`,
+    })),
+  );
 
   /** Plain clicks try the Stremio app first; see `openStremio`. */
   onStremioClick(event: MouseEvent): void {
