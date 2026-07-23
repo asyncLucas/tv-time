@@ -43,6 +43,14 @@
   grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
   gap: 18px 14px;
 }
+.person {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.person:hover .p-name {
+  text-decoration: underline;
+}
 .person img,
 .person .ph {
   width: 100%;

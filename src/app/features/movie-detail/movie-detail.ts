@@ -17,7 +17,7 @@ import type { MovieView } from '../../core/models';
 import { Poster } from '../../shared/poster';
 import { BackNav } from '../../shared/back-nav';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
-import { stremioUrl } from '../../shared/stremio';
+import { stremioUrl, openStremio } from '../../shared/stremio';
 
 @Component({
   selector: 'app-movie-detail',
@@ -44,7 +44,7 @@ import { stremioUrl } from '../../shared/stremio';
                   <a class="trailer-badge" [href]="trailer" target="_blank" rel="noopener" title="Watch the trailer on YouTube">▶ Trailer</a>
                 }
                 @if (stremioUrl(); as stremio) {
-                  <a class="stremio-badge" [href]="stremio" target="_blank" rel="noopener" title="Open in Stremio">Stremio</a>
+                  <a class="stremio-badge" [href]="stremio" (click)="onStremioClick($event)" target="_blank" rel="noopener" title="Open in Stremio">Stremio</a>
                 }
               </div>
               @if (tmdbMovie()?.watchProviders; as wp) {
@@ -145,7 +145,7 @@ import { stremioUrl } from '../../shared/stremio';
             <h2 class="sec">Cast</h2>
             <div class="cast">
               @for (c of castRows(); track c.name) {
-                <div class="person">
+                <a class="person" [href]="c.url" target="_blank" rel="noopener" [title]="'View ' + c.name + ' on TMDB'">
                   @if (c.img) {
                     <img [src]="c.img" [alt]="c.name" loading="lazy" decoding="async" />
                   } @else {
@@ -153,7 +153,7 @@ import { stremioUrl } from '../../shared/stremio';
                   }
                   <div class="p-name">{{ c.name }}</div>
                   <div class="p-char">{{ c.character }}</div>
-                </div>
+                </a>
               }
             </div>
           } @else {
@@ -360,8 +360,15 @@ export class MovieDetail {
       character: c.character,
       img: this.tmdb.profileImg(c.profilePath),
       initial: c.name.slice(0, 1),
+      url: `https://www.themoviedb.org/person/${c.id}`,
     })),
   );
+
+  /** Plain clicks try the Stremio app first; see `openStremio`. */
+  onStremioClick(event: MouseEvent): void {
+    const web = this.stremioUrl();
+    if (web) openStremio(event, web);
+  }
 
   constructor() {
     // Load TMDB detail whenever the route changes. A library film resolves by

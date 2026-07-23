@@ -5,6 +5,7 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { loadPublicProfile, type PublicProfile } from '../../core/public-profile.service';
 import { formatDuration } from '../../shared/duration';
 import { Poster } from '../../shared/poster';
+import { WheelX } from '../../shared/wheel-x';
 
 /**
  * Somebody's shared profile, read from their public gist.
@@ -25,7 +26,7 @@ import { Poster } from '../../shared/poster';
  */
 @Component({
   selector: 'app-public-profile',
-  imports: [RouterLink, Poster],
+  imports: [RouterLink, Poster, WheelX],
   template: `
     <div class="page">
       @switch (state()) {
@@ -104,7 +105,7 @@ import { Poster } from '../../shared/poster';
 
             @if (p.favoriteShows.length) {
               <h2>Favorite shows</h2>
-              <div class="rail">
+              <div class="rail" appWheelX>
                 @for (s of p.favoriteShows; track $index) {
                   <div class="fav">
                     <app-poster [title]="s.name" [cachedPoster]="s.poster" />
@@ -116,7 +117,7 @@ import { Poster } from '../../shared/poster';
 
             @if (p.favoriteMovies.length) {
               <h2>Favorite movies</h2>
-              <div class="rail">
+              <div class="rail" appWheelX>
                 @for (m of p.favoriteMovies; track $index) {
                   <div class="fav">
                     <app-poster [title]="m.name" [cachedPoster]="m.poster" />

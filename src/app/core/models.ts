@@ -121,7 +121,7 @@ export interface Seed {
 // ---------------------------------------------------------------------------
 // User state (the CRDT doc)
 // ---------------------------------------------------------------------------
-export type ShowStatus = 'watching' | 'completed' | 'watchlist' | 'dropped' | 'none';
+export type ShowStatus = 'watching' | 'paused' | 'completed' | 'watchlist' | 'dropped' | 'none';
 
 /** Per-show tracking state. Keyed by show uuid in the CRDT. */
 export interface ShowState {

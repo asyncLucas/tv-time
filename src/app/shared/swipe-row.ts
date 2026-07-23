@@ -17,6 +17,10 @@ import {
  * a green one to mark an episode watched. Direction is not cosmetic — a
  * destructive action and an additive one should not feel like the same motion.
  *
+ * A row may also carry a *secondary* action travelling the opposite way (give
+ * it a `label2` to enable it): the home rail swipes right to mark watched and
+ * left to pause the show. It fires `confirm2` and gets its own hover button.
+ *
  * Tap vs. swipe is disambiguated by horizontal travel: a real drag suppresses
  * the synthesized click so a swipe never accidentally opens the item.
  *
@@ -34,10 +38,17 @@ import {
         land once the gesture already ended. The .swipe-btn button is the real
         control, and it is reachable by keyboard.
       -->
-      <div class="swipe-action" [class.right]="direction() === 'right'" [class.good]="tone() === 'good'"
-           aria-hidden="true">
-        <span class="ic">{{ icon() }}</span> {{ label() }}
-      </div>
+      @if (revealSecondary()) {
+        <div class="swipe-action" [class.right]="direction() === 'left'" [class.good]="tone2() === 'good'"
+             [class.warn]="tone2() === 'warn'" aria-hidden="true">
+          <span class="ic">{{ icon2() }}</span> {{ label2() }}
+        </div>
+      } @else {
+        <div class="swipe-action" [class.right]="direction() === 'right'" [class.good]="tone() === 'good'"
+             [class.warn]="tone() === 'warn'" aria-hidden="true">
+          <span class="ic">{{ icon() }}</span> {{ label() }}
+        </div>
+      }
       <div
         class="swipe-fg"
         role="button"
@@ -54,8 +65,14 @@ import {
       >
         <ng-content />
         @if (!disabled()) {
-          <button class="swipe-btn" [class.good]="tone() === 'good'" (click)="onAction($event)"
+          <button class="swipe-btn" [class.good]="tone() === 'good'" [class.warn]="tone() === 'warn'"
+                  (click)="onAction($event)"
                   [attr.aria-label]="buttonLabel() || label()">{{ icon() }}</button>
+          @if (hasSecondary()) {
+            <button class="swipe-btn two" [class.good]="tone2() === 'good'" [class.warn]="tone2() === 'warn'"
+                    (click)="onAction2($event)"
+                    [attr.aria-label]="buttonLabel2() || label2()">{{ icon2() }}</button>
+          }
         }
       </div>
     </div>
@@ -90,6 +107,10 @@ import {
         background: var(--good);
         color: #06281d;
       }
+      .swipe-action.warn {
+        background: var(--gold);
+        color: #2a2305;
+      }
       .swipe-action .ic {
         font-size: 14px;
       }
@@ -117,6 +138,10 @@ import {
         opacity: 0;
         transition: all 0.14s ease;
       }
+      /* the secondary action's button sits just left of the primary's */
+      .swipe-btn.two {
+        right: 46px;
+      }
       /*
        * Keyboard focus must reveal the button too — it lives outside the
        * hover-only block, or tabbing to it would focus something invisible.
@@ -128,6 +153,9 @@ import {
       }
       .swipe-btn.good:focus-visible {
         outline-color: var(--good);
+      }
+      .swipe-btn.warn:focus-visible {
+        outline-color: var(--gold);
       }
       .swipe-fg:focus-visible {
         outline: 2px solid var(--gold);
@@ -147,6 +175,10 @@ import {
           background: var(--good);
           color: #06281d;
         }
+        .swipe-btn.warn:hover {
+          background: var(--gold);
+          color: #2a2305;
+        }
       }
     `,
   ],
@@ -157,16 +189,22 @@ import {
 export class SwipeRow {
   /** Which way the row travels. 'left' reads as destructive, 'right' as additive. */
   readonly direction = input<'left' | 'right'>('left');
-  readonly tone = input<'bad' | 'good'>('bad');
+  readonly tone = input<'bad' | 'good' | 'warn'>('bad');
   readonly label = input('Remove');
   readonly icon = input('✕');
   /** Accessible name for the button; falls back to `label`. */
   readonly buttonLabel = input('');
+  /** Secondary action, travelling opposite `direction`. A label enables it. */
+  readonly label2 = input('');
+  readonly icon2 = input('');
+  readonly tone2 = input<'bad' | 'good' | 'warn'>('bad');
+  readonly buttonLabel2 = input('');
   /** Inert: the row still opens on tap, but the action can't be triggered. */
   readonly disabled = input(false);
 
   readonly open = output<void>();
   readonly confirm = output<void>();
+  readonly confirm2 = output<void>();
 
   readonly dx = signal(0);
   readonly snap = signal(false);
@@ -180,6 +218,10 @@ export class SwipeRow {
 
   /** +1 when the row travels right, -1 when it travels left. */
   private readonly sign = computed(() => (this.direction() === 'right' ? 1 : -1));
+
+  readonly hasSecondary = computed(() => this.label2() !== '');
+  /** The drag is currently revealing the secondary backdrop. */
+  readonly revealSecondary = computed(() => this.hasSecondary() && this.dx() * this.sign() < 0);
 
   onStart(e: TouchEvent): void {
     if (this.disabled()) return;
@@ -200,8 +242,10 @@ export class SwipeRow {
       return;
     }
     if (Math.abs(dx) > 6) this.moved = true;
-    // Travel only in the configured direction; the opposite way is pinned to 0.
-    const travel = Math.min(this.MAX, Math.max(0, dx * this.sign()));
+    // Travel in the configured direction — and the opposite way too when a
+    // secondary action rides there; otherwise that side is pinned to 0.
+    const floor = this.hasSecondary() ? -this.MAX : 0;
+    const travel = Math.min(this.MAX, Math.max(floor, dx * this.sign()));
     this.dx.set(travel * this.sign());
   }
 
@@ -209,9 +253,13 @@ export class SwipeRow {
     if (!this.dragging) return;
     this.dragging = false;
     this.snap.set(true);
-    if (this.dx() * this.sign() >= this.THRESHOLD) {
+    const travel = this.dx() * this.sign();
+    if (travel >= this.THRESHOLD) {
       this.dx.set(this.MAX * this.sign());
       this.confirm.emit();
+    } else if (this.hasSecondary() && travel <= -this.THRESHOLD) {
+      this.dx.set(-this.MAX * this.sign());
+      this.confirm2.emit();
     } else {
       this.dx.set(0);
     }
@@ -239,6 +287,12 @@ export class SwipeRow {
     e.stopPropagation();
     if (this.disabled()) return;
     this.confirm.emit();
+  }
+
+  onAction2(e: Event): void {
+    e.stopPropagation();
+    if (this.disabled()) return;
+    this.confirm2.emit();
   }
 
   /** Snap the row back to rest — for a caller whose row survives the action. */

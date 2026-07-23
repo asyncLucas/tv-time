@@ -18,7 +18,7 @@ import { TitleSearch } from '../../shared/title-search';
 import { scrollToCard } from '../../shared/scroll-to-card';
 import type { ShowView, ShowStatus } from '../../core/models';
 
-type Filter = 'all' | 'watching' | 'completed' | 'watchlist' | 'favorites' | 'trending';
+type Filter = 'all' | 'watching' | 'paused' | 'completed' | 'watchlist' | 'favorites' | 'trending';
 
 /** Stash key for the tab/search/scroll position remembered across a detail visit. */
 const STASH = 'shows';
@@ -318,6 +318,7 @@ export class Shows {
   tabs: { key: Filter; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'watching', label: 'Watching' },
+    { key: 'paused', label: 'Paused' },
     { key: 'completed', label: 'Completed' },
     { key: 'favorites', label: 'Favorites' },
     { key: 'trending', label: 'Trending' },
@@ -364,6 +365,7 @@ export class Shows {
       .filter((s) => {
         if (f === 'favorites' && !s.state.favorite) return false;
         if (f === 'watching' && s.state.status !== 'watching') return false;
+        if (f === 'paused' && s.state.status !== 'paused') return false;
         if (f === 'completed' && s.state.status !== 'completed') return false;
         if (q && !s.name.toLowerCase().includes(q)) return false;
         return true;
@@ -410,6 +412,7 @@ export class Shows {
     const n: Record<Filter, number> = {
       all: shows.length,
       watching: 0,
+      paused: 0,
       completed: 0,
       watchlist: 0,
       favorites: 0,
@@ -418,6 +421,7 @@ export class Shows {
     for (const s of shows) {
       if (s.state.favorite) n.favorites++;
       if (s.state.status === 'watching') n.watching++;
+      else if (s.state.status === 'paused') n.paused++;
       else if (s.state.status === 'completed') n.completed++;
       else if (s.state.status === 'watchlist') n.watchlist++;
     }

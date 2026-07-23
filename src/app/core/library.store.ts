@@ -778,8 +778,24 @@ export class LibraryStore {
         watchedAt: cur?.watchedAt ?? this.now(),
         nbTimes: (cur?.nbTimes ?? 0) + (cur ? 0 : 1),
       });
+      this.resumeIfPaused(tvdbId);
     } else {
       this.docs.episodeWatches.delete(key);
+    }
+  }
+
+  /**
+   * A paused show resumes the moment one of its episodes is ticked watched.
+   * Reads state straight from the CRDT, not the signal — inside a season-wide
+   * transaction the signal hasn't refreshed yet, and only the doc shows that a
+   * previous iteration already flipped the status.
+   */
+  private resumeIfPaused(tvdbId: string): void {
+    const show = this.shows().find((s) => s.tvdbId === tvdbId);
+    if (!show) return;
+    const cur = this.docs.showState.get(show.uuid);
+    if (cur?.status === 'paused') {
+      this.docs.showState.set(show.uuid, { ...cur, status: 'watching', updatedAt: this.now() });
     }
   }
 

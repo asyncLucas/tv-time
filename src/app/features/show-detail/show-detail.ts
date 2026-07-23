@@ -17,7 +17,7 @@ import { BackNav } from '../../shared/back-nav';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { EpisodeRatingDialog } from '../../shared/episode-rating-dialog';
 import { YearPipe } from '../../shared/year';
-import { stremioUrl } from '../../shared/stremio';
+import { stremioUrl, openStremio } from '../../shared/stremio';
 
 @Component({
   selector: 'app-show-detail',
@@ -43,7 +43,7 @@ import { stremioUrl } from '../../shared/stremio';
                 @if (s.network || tmdbShow()?.networks?.length) { <span>{{ s.network || tmdbShow()!.networks[0] }}</span> }
                 @if (totalEpisodes()) { <span>{{ totalEpisodes() }} episodes</span> }
                 @if (stremioUrl(); as stremio) {
-                  <a class="stremio-badge" [href]="stremio" target="_blank" rel="noopener" title="Open in Stremio">Stremio</a>
+                  <a class="stremio-badge" [href]="stremio" (click)="onStremioClick($event)" target="_blank" rel="noopener" title="Open in Stremio">Stremio</a>
                 }
               </div>
               @if (tmdbShow()?.watchProviders; as wp) {
@@ -90,6 +90,7 @@ import { stremioUrl } from '../../shared/stremio';
                   <select class="status-sel" [value]="s.state.status" (change)="setStatus($any($event.target).value)">
                     <option value="none">Not in my library</option>
                     <option value="watching">Watching</option>
+                    <option value="paused">Paused</option>
                     <option value="completed">Completed</option>
                     <option value="watchlist">Watchlist</option>
                     <option value="dropped">Dropped</option>
@@ -345,6 +346,12 @@ export class ShowDetail {
 
   /** A Stremio Web link for this show, once its IMDb id is known. */
   readonly stremioUrl = computed(() => stremioUrl('series', this.tmdbShow()?.imdbId ?? null));
+
+  /** Plain clicks try the Stremio app first; see `openStremio`. */
+  onStremioClick(event: MouseEvent): void {
+    const web = this.stremioUrl();
+    if (web) openStremio(event, web);
+  }
 
   /** Rent and buy providers merged (deduped) for the paid-options badge row. */
   readonly rentOrBuy = computed<WatchProvider[]>(() => {

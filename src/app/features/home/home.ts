@@ -106,8 +106,13 @@ interface NextEpisode {
                 label="Watched"
                 icon="✓"
                 [buttonLabel]="n.actionLabel"
+                label2="Pause"
+                icon2="⏸"
+                tone2="warn"
+                [buttonLabel2]="'Pause ' + n.show.name"
                 (open)="openShow(n)"
                 (confirm)="markWatched(n)"
+                (confirm2)="pauseShow(n)"
               >
                 <div class="nu-row">
                   <app-poster
@@ -124,7 +129,7 @@ interface NextEpisode {
                       @if (n.title) { — {{ n.title }} }
                     </div>
                   </div>
-                  <span class="nu-hint" aria-hidden="true">Swipe →</span>
+                  <span class="nu-hint" aria-hidden="true">← Pause · Watched →</span>
                 </div>
               </app-swipe-row>
             }
@@ -321,6 +326,14 @@ export class Home {
     this.store.setEpisodeWatched(n.tvdbId, n.season, n.episode, true);
     this.ratingNote.set(null);
     this.ratingFor.set(n);
+  }
+
+  /**
+   * Shelve the show: it leaves this rail until an episode is ticked watched,
+   * which flips it back to Watching (see LibraryStore.resumeIfPaused).
+   */
+  pauseShow(n: NextEpisode): void {
+    this.store.setShowStatus(n.show.uuid, 'paused');
   }
 
   /** The score already on record for the episode being rated, if any. */

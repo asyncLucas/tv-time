@@ -74,7 +74,7 @@ export interface TmdbMovie {
   voteAverage: number | null;
   genres: string[];
   directors: string[];
-  cast: { name: string; character: string; profilePath: string | null }[];
+  cast: { id: number; name: string; character: string; profilePath: string | null }[];
   homepage: string | null;
   imdbId: string | null;
   /** Best available YouTube trailer, as a watch URL — null if TMDB has none. */
@@ -491,6 +491,7 @@ export class TmdbService {
       genres: (d.genres ?? []).map((g: any) => g.name),
       directors: crew.filter((c: any) => c.job === 'Director').map((c: any) => c.name),
       cast: (d.credits?.cast ?? []).slice(0, 12).map((c: any) => ({
+        id: c.id,
         name: c.name,
         character: c.character,
         profilePath: c.profile_path,

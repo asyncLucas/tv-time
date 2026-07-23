@@ -15,6 +15,7 @@ import { PublicProfileService } from '../../core/public-profile.service';
 import { ConfirmDialog } from '../../shared/confirm-dialog';
 import { formatDuration } from '../../shared/duration';
 import { Poster } from '../../shared/poster';
+import { WheelX } from '../../shared/wheel-x';
 import { YearPipe } from '../../shared/year';
 import { ScreenTime } from './screen-time';
 
@@ -31,7 +32,7 @@ function focusAndSelect(el: HTMLInputElement | undefined): void {
 
 @Component({
   selector: 'app-profile',
-  imports: [YearPipe, RouterLink, Poster, ScreenTime, ConfirmDialog],
+  imports: [YearPipe, RouterLink, Poster, ScreenTime, ConfirmDialog, WheelX],
   template: `
     <div class="page">
       @if (store.profile(); as p) {
@@ -215,7 +216,7 @@ function focusAndSelect(el: HTMLInputElement | undefined): void {
 
         @if (favShows().length) {
           <h2>Favorite shows</h2>
-          <div class="rail">
+          <div class="rail" appWheelX>
             @for (s of favShows(); track s.uuid) {
               <a class="fav" [routerLink]="['/shows', s.uuid]">
                 <app-poster [title]="s.name" [tvdbId]="s.tvdbId" [cachedPoster]="s.cachedPoster ?? null" />
@@ -227,7 +228,7 @@ function focusAndSelect(el: HTMLInputElement | undefined): void {
 
         @if (favMovies().length) {
           <h2>Favorite movies</h2>
-          <div class="rail">
+          <div class="rail" appWheelX>
             @for (m of favMovies(); track m.uuid) {
               <a class="fav" [routerLink]="['/movies', m.uuid]">
                 <app-poster [title]="m.name" [imdbId]="m.imdbId" [cachedPoster]="m.cachedPoster ?? null" />
