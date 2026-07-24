@@ -692,11 +692,19 @@ export class ShowDetail {
     );
     const payload = seasons.map((x) => ({
       season: x.seasonNumber,
-      episodes: (this.episodes()[x.seasonNumber] ?? []).map((e) => e.episodeNumber),
+      episodes: (this.episodes()[x.seasonNumber] ?? []).map((e) => ({
+        number: e.episodeNumber,
+        airDate: e.airDate,
+      })),
     }));
     const last = payload.find((x) => x.season === p.through)?.episodes ?? [];
     if (!last.length) return; // target season failed to load — nothing to mark
-    this.store.markWatchedUpTo(s.tvdbId, p.through, Math.max(...last), payload);
+    this.store.markWatchedUpTo(
+      s.tvdbId,
+      p.through,
+      Math.max(...last.map((e) => e.number)),
+      payload,
+    );
   }
 
   async setStatus(v: string): Promise<void> {
@@ -718,7 +726,10 @@ export class ShowDetail {
       );
       const payload = info.seasons.map((season) => ({
         season: season.seasonNumber,
-        episodes: (this.episodes()[season.seasonNumber] ?? []).map((e) => e.episodeNumber),
+        episodes: (this.episodes()[season.seasonNumber] ?? []).map((e) => ({
+          number: e.episodeNumber,
+          airDate: e.airDate,
+        })),
       }));
       const last = info.seasons[info.seasons.length - 1];
       const lastEps = this.episodes()[last.seasonNumber] ?? [];

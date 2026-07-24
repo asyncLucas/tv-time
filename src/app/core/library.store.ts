@@ -767,7 +767,13 @@ export class LibraryStore {
     this.docs.movieState.set(uuid, { ...cur, rating, updatedAt: this.now() });
   }
 
-  setEpisodeWatched(tvdbId: string, season: number, episode: number, watched: boolean): void {
+  setEpisodeWatched(
+    tvdbId: string,
+    season: number,
+    episode: number,
+    watched: boolean,
+    at?: string,
+  ): void {
     const key = epKey(tvdbId, season, episode);
     if (watched) {
       const cur = this.docs.episodeWatches.get(key);
@@ -775,7 +781,7 @@ export class LibraryStore {
         tvdbId,
         season,
         episode,
-        watchedAt: cur?.watchedAt ?? this.now(),
+        watchedAt: cur?.watchedAt ?? at ?? this.now(),
         nbTimes: (cur?.nbTimes ?? 0) + (cur ? 0 : 1),
       });
       this.resumeIfPaused(tvdbId);
@@ -872,22 +878,38 @@ export class LibraryStore {
     });
   }
 
-  /** Mark every episode up to and including (season, episode) as watched. */
+  /**
+   * Mark every episode up to and including (season, episode) as watched.
+   *
+   * Bulk marks are backfills, not tonight's viewing, so each watch is stamped
+   * with the episode's air date rather than "now" — otherwise completing a
+   * back-catalog show would claim its whole run was watched today and skew
+   * every date-derived view (stats, recency ordering, exports). Episodes with
+   * no air date, or one in the future, fall back to the current time.
+   */
   markWatchedUpTo(
     tvdbId: string,
     upToSeason: number,
     upToEpisode: number,
-    seasons: { season: number; episodes: number[] }[],
+    seasons: { season: number; episodes: { number: number; airDate: string | null }[] }[],
   ): void {
+    const now = this.now();
     this.docs.doc.transact(() => {
       for (const s of seasons) {
         for (const ep of s.episodes) {
-          if (s.season < upToSeason || (s.season === upToSeason && ep <= upToEpisode)) {
-            this.setEpisodeWatched(tvdbId, s.season, ep, true);
+          if (s.season < upToSeason || (s.season === upToSeason && ep.number <= upToEpisode)) {
+            this.setEpisodeWatched(tvdbId, s.season, ep.number, true, this.airStamp(ep.airDate, now));
           }
         }
       }
     });
+  }
+
+  /** An air date as a watch timestamp — midnight UTC that day, never in the future. */
+  private airStamp(airDate: string | null, now: string): string {
+    if (!airDate) return now;
+    const iso = `${airDate}T00:00:00.000Z`;
+    return iso < now ? iso : now;
   }
 
   // -------------------------------------------------------------------------
