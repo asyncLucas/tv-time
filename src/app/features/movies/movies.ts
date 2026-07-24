@@ -100,24 +100,6 @@ const PAGE = 60;
                     [cachedPoster]="m.cachedPoster ?? null"
                   />
                 </a>
-                <div class="actions">
-                  <button
-                    class="act"
-                    [class.on]="m.state.watched"
-                    title="Watched"
-                    (click)="store.setMovieWatched(m.uuid, !m.state.watched)"
-                  >
-                    ✓
-                  </button>
-                  <button
-                    class="act"
-                    [class.on]="m.state.favorite"
-                    title="Favorite"
-                    (click)="store.toggleMovieFavorite(m.uuid)"
-                  >
-                    ★
-                  </button>
-                </div>
               </div>
               <a class="name" [routerLink]="['/movies', m.uuid]" (click)="remember(m.uuid)">{{
                 m.name
@@ -228,32 +210,6 @@ const PAGE = 60;
         color: var(--gold);
         text-decoration: underline;
       }
-      .pw:hover .actions {
-        opacity: 1;
-      }
-      .actions {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        display: flex;
-        gap: 6px;
-        opacity: 0;
-        transition: opacity 0.14s ease;
-      }
-      .act {
-        width: 30px;
-        height: 30px;
-        border-radius: 8px;
-        border: none;
-        background: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(4px);
-        color: #fff;
-        font-size: 13px;
-      }
-      .act.on {
-        background: var(--gold);
-        color: #1a1600;
-      }
       .name {
         font-size: 13.5px;
         font-weight: 600;
@@ -346,7 +302,13 @@ export class Movies {
         if (q && !m.name.toLowerCase().includes(q)) return false;
         return true;
       })
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .sort((a, b) =>
+        // The Watched tab reads as a history: most recently seen first, films
+        // with no recorded date at the end. Everything else stays alphabetical.
+        f === 'watched'
+          ? (b.state.watchedAt ?? '').localeCompare(a.state.watchedAt ?? '')
+          : a.name.localeCompare(b.name),
+      );
   });
 
   /**
