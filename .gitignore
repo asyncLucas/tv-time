@@ -1,0 +1,56 @@
+# See https://docs.github.com/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# Compiled output
+/dist
+/tmp
+/out-tsc
+/bazel-out
+
+# Node
+/node_modules
+npm-debug.log
+yarn-error.log
+
+# IDEs and editors
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
+
+# Miscellaneous
+/.angular/cache
+.sass-cache/
+/connect.lock
+/coverage
+/libpeerconnection.log
+testem.log
+/typings
+__screenshots__/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Personal library data — never commit or ship (contains your name/history)
+seed.local.json
+public/seed.json
+# Local scratch seeds. A glob rather than a filename: the two entries above were
+# added one exported backup at a time, and the next one would land untracked and
+# unignored the same way.
+*.seed.json
+.screentime-*.json
+
+# Python bytecode from tools/
+__pycache__/
+*.pyc
