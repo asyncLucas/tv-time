@@ -15,6 +15,8 @@ import { TmdbService, TmdbSearchResult } from '../../core/tmdb.service';
 import { Poster } from '../../shared/poster';
 import { InitialsPipe } from '../../shared/initials';
 import { TitleSearch } from '../../shared/title-search';
+import { RecentSearches } from '../../shared/recent-searches';
+import { RecentSearchesService } from '../../core/recent-searches.service';
 import { scrollToCard } from '../../shared/scroll-to-card';
 import type { ShowView, ShowStatus } from '../../core/models';
 
@@ -32,7 +34,7 @@ function label(s: ShowStatus): string {
 
 @Component({
   selector: 'app-shows',
-  imports: [InitialsPipe, RouterLink, Poster, TitleSearch],
+  imports: [InitialsPipe, RouterLink, Poster, TitleSearch, RecentSearches],
   template: `
     <div class="page">
       <div class="page-head">
@@ -44,8 +46,18 @@ function label(s: ShowStatus): string {
             <div class="sub">{{ filtered().length }} of {{ store.shows().length }} series in the catalog</div>
           }
         </div>
-        <input class="search" placeholder="Search shows…" [value]="q()" (input)="q.set($any($event.target).value)" />
+        <input
+          class="search"
+          placeholder="Search shows…"
+          [value]="q()"
+          (input)="q.set($any($event.target).value)"
+          (blur)="rememberQuery()"
+        />
       </div>
+
+      @if (!q().trim()) {
+        <app-recent-searches kind="show" (pick)="q.set($event)" />
+      }
 
       <div class="tabs">
         @for (t of tabs; track t.key) {
@@ -296,6 +308,7 @@ export class Shows {
   store = inject(LibraryStore);
   tmdb = inject(TmdbService);
   private listState = inject(ListStateStore);
+  private recentSearches = inject(RecentSearchesService);
 
   /**
    * Where the grid was when the user last opened a show from it, if that's
@@ -402,6 +415,11 @@ export class Shows {
 
   showMore(): void {
     this.limit.update((n) => n + PAGE);
+  }
+
+  /** Keep the query the user settled on, once they leave the search box. */
+  rememberQuery(): void {
+    void this.recentSearches.remember('show', this.q());
   }
 
   /** Stash the grid's state on the way into a show, for the trip back. */

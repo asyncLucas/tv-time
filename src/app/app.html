@@ -48,6 +48,15 @@
       </div>
     </aside>
 
+    <!-- Nothing here is blocked by being offline — the library is local — so this
+         only reports the state; it never takes over the screen. -->
+    @if (!net.online()) {
+      <div class="offline-banner" role="status">
+        <lucide-icon [img]="WifiOffIcon" [size]="15" class="ob-ic" />
+        <span>You're offline — showing saved data. Changes stay on this device.</span>
+      </div>
+    }
+
     <main class="content">
       <router-outlet />
     </main>

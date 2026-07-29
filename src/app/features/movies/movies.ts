@@ -16,6 +16,8 @@ import { TmdbService } from '../../core/tmdb.service';
 import { Poster } from '../../shared/poster';
 import { InitialsPipe } from '../../shared/initials';
 import { TitleSearch } from '../../shared/title-search';
+import { RecentSearches } from '../../shared/recent-searches';
+import { RecentSearchesService } from '../../core/recent-searches.service';
 import { YearPipe } from '../../shared/year';
 import { scrollToCard } from '../../shared/scroll-to-card';
 import type { MovieView } from '../../core/models';
@@ -30,7 +32,7 @@ const PAGE = 60;
 
 @Component({
   selector: 'app-movies',
-  imports: [InitialsPipe, Poster, RouterLink, TitleSearch, YearPipe],
+  imports: [InitialsPipe, Poster, RouterLink, TitleSearch, RecentSearches, YearPipe],
   template: `
     <div class="page">
       <div class="page-head">
@@ -42,8 +44,18 @@ const PAGE = 60;
             <div class="sub">{{ filtered().length }} of {{ store.movies().length }} tracked films</div>
           }
         </div>
-        <input class="search" placeholder="Search movies…" [value]="q()" (input)="q.set($any($event.target).value)" />
+        <input
+          class="search"
+          placeholder="Search movies…"
+          [value]="q()"
+          (input)="q.set($any($event.target).value)"
+          (blur)="rememberQuery()"
+        />
       </div>
+
+      @if (!q().trim()) {
+        <app-recent-searches kind="movie" (pick)="q.set($event)" />
+      }
 
       <div class="tabs">
         @for (t of tabs; track t.key) {
@@ -251,6 +263,7 @@ export class Movies {
   store = inject(LibraryStore);
   tmdb = inject(TmdbService);
   private listState = inject(ListStateStore);
+  private recentSearches = inject(RecentSearchesService);
 
   /**
    * Where the grid was when the user last opened a film from it, if that's
@@ -326,6 +339,11 @@ export class Movies {
 
   showMore(): void {
     this.limit.update((n) => n + PAGE);
+  }
+
+  /** Keep the query the user settled on, once they leave the search box. */
+  rememberQuery(): void {
+    void this.recentSearches.remember('movie', this.q());
   }
 
   /** Stash the grid's state on the way into a film, for the trip back. */

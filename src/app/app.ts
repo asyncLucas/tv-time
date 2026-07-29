@@ -14,12 +14,14 @@ import {
   Download,
   X,
   Share,
+  WifiOff,
 } from 'lucide-angular';
 import { LibraryStore } from './core/library.store';
 import { DeviceService } from './core/device.service';
 import { SyncService } from './core/sync.service';
 import { GistSyncService } from './core/gist-sync.service';
 import { PwaService } from './core/pwa.service';
+import { NetworkService } from './core/network.service';
 import { LocalConfigService } from './core/local-config.service';
 
 /**
@@ -48,6 +50,7 @@ export class App {
   protected sync = inject(SyncService);
   protected gist = inject(GistSyncService);
   protected pwa = inject(PwaService);
+  protected net = inject(NetworkService);
   protected readonly ready = signal(false);
   protected readonly error = signal<string | null>(null);
   /**
@@ -83,6 +86,7 @@ export class App {
   protected readonly DownloadIcon = Download;
   protected readonly XIcon = X;
   protected readonly ShareIcon = Share;
+  protected readonly WifiOffIcon = WifiOff;
 
   protected readonly nav = [
     { path: '', label: 'Up Next', icon: Play, exact: true },
