@@ -505,11 +505,21 @@ function encodeLink(p: PairPayload): string {
   return `${new URL('link', document.baseURI).href}#${code}`;
 }
 
+/**
+ * The payload half of whatever was scanned or pasted — a full link URL carries
+ * it in the fragment, a hand-copied code *is* it. Exported because a caller
+ * that decides to hand a code to another screen has to pass on the same part
+ * this decoder reads.
+ */
+export function codePart(input: string): string {
+  const raw = input.trim();
+  return raw.includes('#') ? raw.slice(raw.lastIndexOf('#') + 1) : raw;
+}
+
 /** Accepts a full scanned URL or just the bare code pasted by hand. */
 export function decodeLink(input: string): PairPayload | null {
-  const raw = input.trim();
-  if (!raw) return null;
-  const code = raw.includes('#') ? raw.slice(raw.lastIndexOf('#') + 1) : raw;
+  const code = codePart(input);
+  if (!code) return null;
   try {
     const b64 = code.replace(/-/g, '+').replace(/_/g, '/');
     const bin = atob(b64.padEnd(Math.ceil(b64.length / 4) * 4, '='));

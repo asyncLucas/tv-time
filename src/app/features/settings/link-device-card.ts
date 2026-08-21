@@ -6,11 +6,11 @@ import {
   inject,
   signal,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { LucideAngularModule, Camera as CameraIcon, QrCode as QrCodeIcon } from 'lucide-angular';
 import { QrCode } from '../../shared/qr-code';
 import { QrScanner } from '../../shared/qr-scanner';
-import { PairingService } from '../../core/pairing.service';
+import { PairingService, codePart, decodeLink } from '../../core/pairing.service';
 import { GistSyncService } from '../../core/gist-sync.service';
 
 /**
@@ -377,6 +377,7 @@ import { GistSyncService } from '../../core/gist-sync.service';
 export class LinkDeviceCard implements OnDestroy {
   protected pair = inject(PairingService);
   protected gist = inject(GistSyncService);
+  private router = inject(Router);
   protected readonly QrIcon = QrCodeIcon;
   protected readonly CameraIcon = CameraIcon;
   protected readonly copied = signal(false);
@@ -409,10 +410,25 @@ export class LinkDeviceCard implements OnDestroy {
     this.pair.host();
   }
 
-  /** Redeem a code — scanned off the camera or pasted by hand. */
+  /**
+   * Redeem a code — scanned off the camera or pasted by hand.
+   *
+   * The code says which side of the exchange it belongs to, so read that rather
+   * than assuming the button you pressed was the right one. A code minted by a
+   * device that already has the library means *this* one is the newcomer, and
+   * refusing it would be pedantry: hand it to the screen that redeems it, which
+   * is also where the "this replaces your sync setup" consent lives.
+   */
   protected use(code: string): void {
     if (!code.trim()) return;
     this.scanning.set(false);
+    const payload = decodeLink(code);
+    // Junk falls through to grant(), which is where the "not a valid code"
+    // message lives — no second copy of it here.
+    if (payload && !payload.o) {
+      void this.router.navigate(['/link'], { fragment: codePart(code) });
+      return;
+    }
     void this.pair.grant(code);
   }
 

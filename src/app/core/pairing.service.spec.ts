@@ -1,4 +1,4 @@
-import { decodeLink, randomToken } from './pairing.service';
+import { codePart, decodeLink, randomToken } from './pairing.service';
 
 /** Build a link code the way the QR encoder does, so the tests use real input. */
 function code(payload: unknown): string {
@@ -59,6 +59,21 @@ describe('decodeLink', () => {
 
   it('rejects a version it does not understand', () => {
     expect(decodeLink(code({ ...VALID, v: 2 }))).toBeNull();
+  });
+});
+
+describe('codePart', () => {
+  it('takes the payload out of a scanned URL, so it can be re-used as a fragment', () => {
+    expect(codePart(`https://tv.example/link#${code(VALID)}`)).toBe(code(VALID));
+  });
+
+  it('leaves a bare pasted code alone', () => {
+    expect(codePart(`  ${code(VALID)}\n`)).toBe(code(VALID));
+  });
+
+  it('reads what decodeLink reads — the two must not drift apart', () => {
+    const url = `https://tv.example/link#${code(VALID)}`;
+    expect(decodeLink(codePart(url))).toEqual(decodeLink(url));
   });
 });
 
