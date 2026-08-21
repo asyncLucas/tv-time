@@ -1,0 +1,754 @@
+/* ==========================================================================
+   TV Time Revival — global design tokens + base
+   Dark, cinematic, poster-forward. Gold accent nods to the original app.
+   ========================================================================== */
+:root {
+  /* surfaces */
+  --bg: #0c0d10;
+  --bg-elev: #14161b;
+  --bg-elev-2: #1c1f26;
+  --line: #262a33;
+  --line-soft: #1e222a;
+
+  /* text */
+  --text: #eef0f4;
+  --text-dim: #a3a9b5;
+  --text-faint: #6b7280;
+
+  /* accent — TV Time gold + a cool secondary */
+  --gold: #f5c518;
+  --gold-soft: #f5c51826;
+  --accent: #6ea8fe;
+  --good: #34d399;
+  --bad: #f87171;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 20px 60px rgba(0, 0, 0, 0.55);
+
+  --sidebar-w: 232px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* Motion — one vocabulary for the whole app, so a hover, a page entrance and
+     a swipe all decelerate the same way instead of each picking their own
+     `ease`. Anything that moves should name a duration and a curve from here.
+
+       --ease-out    settling into place; the default for nearly everything
+       --ease-spring a little overshoot, for lifts and presses that should feel
+                     physical rather than mechanical
+       --ease-in-out symmetric travel (scroll animations, sliding indicators) */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-1: 120ms; /* colour/opacity swaps — should feel instant */
+  --dur-2: 200ms; /* hovers, presses, small transforms */
+  --dur-3: 320ms; /* page + section entrances */
+  --dur-4: 460ms; /* the longest thing a user should ever wait on */
+
+  /* Device safe areas (notch / home indicator / landscape ears). The viewport is
+     `viewport-fit=cover`, so every edge-anchored surface must add these itself.
+     They resolve to 0px everywhere that has no inset. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+img {
+  max-width: 100%;
+  display: block;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2e37;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- shared primitives used across features ---- */
+.page {
+  padding: calc(32px + var(--safe-top)) calc(40px + var(--safe-right)) 64px
+    calc(40px + var(--safe-left));
+  max-width: 1400px;
+}
+/* tighter gutters on phones so content isn't squeezed by the 40px desktop inset */
+@media (max-width: 720px) {
+  .page {
+    padding: calc(20px + var(--safe-top)) calc(16px + var(--safe-right))
+      calc(80px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  }
+  .page-head h1 {
+    font-size: 24px;
+  }
+  /* iOS Safari auto-zooms when you focus a control whose font is < 16px. Pin
+     every text-entry control to 16px on phones so focusing search/settings
+     fields never triggers that jump. The `:not()` guards give this enough
+     specificity to win over component-scoped sizes without touching pinch-zoom
+     (which stays available, unlike a `user-scalable=no` viewport hack). */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+.page-head h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.page-head .sub {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--bg-elev-2);
+  color: var(--text);
+  padding: 9px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    background var(--dur-2) var(--ease-out),
+    border-color var(--dur-2) var(--ease-out),
+    color var(--dur-2) var(--ease-out),
+    transform var(--dur-1) var(--ease-out),
+    filter var(--dur-2) var(--ease-out);
+}
+.btn:hover {
+  border-color: #3a3f4a;
+  background: #232732;
+}
+/* Presses answer back. The scale is tiny on purpose — enough to register as
+   contact under a finger, not enough to read as the button changing size. */
+.btn:active {
+  transform: scale(0.97);
+}
+.btn.primary {
+  background: var(--gold);
+  color: #1a1600;
+  border-color: var(--gold);
+}
+.btn.primary:hover {
+  filter: brightness(1.08);
+}
+.btn.ghost {
+  background: transparent;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  border: 1px solid var(--line-soft);
+}
+.chip.gold {
+  background: var(--gold-soft);
+  color: var(--gold);
+  border-color: transparent;
+}
+
+/* The "saved" control and its dropdown: one button standing in for watchlist
+   and custom-list membership, shared by the film and show detail pages. */
+
+.btn.saved {
+  background: rgba(74, 194, 107, 0.14);
+  border-color: transparent;
+  color: #4ac26b;
+}
+.btn.saved:hover {
+  background: rgba(74, 194, 107, 0.22);
+}
+
+.list-menu {
+  position: relative;
+}
+/* Preview: "Add to library" + list caret fused into one split button. */
+.list-menu.split {
+  display: inline-flex;
+  align-items: stretch;
+}
+.list-menu.split .add {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.list-menu.split .split-caret {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.25);
+  margin-left: -1px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.list-menu .btn.sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.lm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+.lm-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+.lm-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.lm-row:hover {
+  background: var(--bg-elev-2);
+}
+.lm-row.danger {
+  color: #f85149;
+}
+.lm-row.danger .lm-check {
+  color: inherit;
+}
+.lm-row.danger:hover {
+  background: rgba(248, 81, 73, 0.14);
+}
+.lm-check {
+  width: 14px;
+  color: var(--gold);
+  font-weight: 800;
+}
+.lm-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lm-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 6px 4px;
+}
+.lm-empty {
+  padding: 6px 10px 8px;
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 600;
+}
+.lm-new {
+  display: flex;
+  gap: 6px;
+  padding: 4px;
+}
+.lm-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  outline: none;
+}
+.lm-input:focus {
+  border-color: #3a3f4a;
+}
+
+@media (max-width: 720px) {
+  /* Anchored to a button that sits near the right edge, the absolute panel ran
+     off-screen on phones. Detach it from the button and pin it to the viewport
+     as a bottom sheet, above the tab bar, so it always fits. */
+  .lm-backdrop {
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .lm-panel {
+    position: fixed;
+    inset: auto calc(12px + var(--safe-right)) calc(78px + var(--safe-bottom))
+      calc(12px + var(--safe-left));
+    top: auto;
+    min-width: 0;
+    max-height: min(60vh, 420px);
+    padding: 8px;
+  }
+  .lm-row {
+    padding: 12px 10px;
+    font-size: 15px;
+  }
+  .lm-input {
+    padding: 10px 12px;
+    font-size: 16px; /* keeps iOS Safari from zooming the page on focus */
+  }
+}
+
+/* Cast cards, shared by the film and show detail pages. Each page decides how
+   they are laid out — a grid there, a one-line rail here — so only the card
+   itself lives at this level. */
+.person {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.person:hover .p-name {
+  text-decoration: underline;
+}
+.person img,
+.person .ph {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 10px;
+  background: var(--bg-elev-2);
+}
+.person .ph {
+  display: grid;
+  place-items: center;
+  color: var(--text-faint);
+  font-size: 24px;
+  font-weight: 800;
+}
+.p-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-top: 8px;
+  line-height: 1.3;
+}
+.p-char {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+/* Section heading inside a detail page body. */
+.sec {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+
+.poster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 20px 18px;
+}
+
+.empty {
+  color: var(--text-faint);
+  font-size: 14px;
+  padding: 48px 0;
+  text-align: center;
+}
+
+/* ==========================================================================
+   Title detail chrome
+   The backdrop hero, back button, facts/genres/overview column, 1-10 rating
+   pips, Stremio badge and watch-provider row — the layout the film and show
+   detail pages share over different data.
+
+   Global rather than a partial each page pulls in: a partial is inlined into
+   every component that uses it, so the same rules were emitted twice into the
+   bundle and counted twice against the per-component style budget. Nested
+   under .detail (the root element of both pages) so these generic names can't
+   reach anything else. Page-specific overrides — .hero padding, .hero .poster,
+   .info h1, .body, each page's media query — stay in the component files,
+   which are injected after this stylesheet and so still win.
+   ========================================================================== */
+.detail {
+  .hero .scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(12, 13, 16, 0.55) 0%, rgba(12, 13, 16, 0.9) 70%, var(--bg) 100%),
+      linear-gradient(90deg, rgba(12, 13, 16, 0.85) 0%, transparent 60%);
+  }
+
+  .back {
+    position: relative;
+    z-index: 2;
+    display: inline-block;
+    transition:
+      color var(--dur-2) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+    margin: calc(24px + var(--safe-top)) 0 0 calc(40px + var(--safe-left));
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  /* Slides back the way it takes you. */
+  .back:hover {
+    color: var(--text);
+    transform: translateX(-3px);
+  }
+
+  .hero-inner {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    gap: 28px;
+    padding: 24px calc(40px + var(--safe-right)) 36px calc(40px + var(--safe-left));
+    align-items: flex-end;
+  }
+
+  .info {
+    min-width: 0;
+    max-width: 720px;
+  }
+
+  .facts {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .facts span:not(:last-child)::after {
+    content: '·';
+    margin-left: 8px;
+    opacity: 0.5;
+  }
+
+  /* Stremio badge — a violet pill in the facts row linking out to Stremio Web. */
+  .stremio-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    background: rgba(122, 92, 255, 0.16);
+    color: #b3a1ff;
+    border: 1px solid transparent;
+    transition:
+      filter var(--dur-2) var(--ease-out),
+      transform var(--dur-2) var(--ease-out);
+  }
+
+  .stremio-badge:hover {
+    filter: brightness(1.15);
+    transform: translateY(-1px);
+  }
+
+  /* Where-to-watch row: a label followed by provider logos. */
+  .providers {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 12px 0 2px;
+  }
+
+  .prov-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-faint);
+  }
+
+  .prov-label:not(:first-child) {
+    margin-left: 6px;
+  }
+
+  .prov {
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
+    object-fit: cover;
+    background: var(--bg-elev-2);
+  }
+
+  .prov-more {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-decoration: underline;
+    margin-left: 4px;
+  }
+
+  .genres {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    margin: 14px 0;
+  }
+
+  .overview {
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 8px 0 18px;
+  }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .rating {
+    display: flex;
+    gap: 3px;
+  }
+
+  .rating .pip {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border-radius: 5px;
+    // reset the UA button styles that would otherwise break the 22px square
+    border: 0;
+    padding: 0;
+    font-family: inherit;
+    background: var(--bg-elev-2);
+    color: var(--text-faint);
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+    transition:
+      background var(--dur-1) var(--ease-out),
+      color var(--dur-1) var(--ease-out),
+      transform var(--dur-2) var(--ease-spring);
+  }
+
+  /* Rating a title is the most deliberate thing you do on this page, so the pips
+     answer the pointer individually — the row reads as ten controls, not a bar. */
+  .rating .pip:hover {
+    transform: translateY(-2px) scale(1.08);
+  }
+
+  .rating .pip:active {
+    transform: scale(0.92);
+  }
+
+  .rating .pip:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+
+  .rating .pip.on {
+    background: var(--gold);
+    color: #1a1600;
+  }
+
+  .notice {
+    background: var(--gold-soft);
+    border: 1px solid transparent;
+    color: var(--gold);
+    padding: 14px 16px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+
+  .notice a {
+    text-decoration: underline;
+  }
+}
+
+/* ==========================================================================
+   Motion
+   Shared keyframes and the app-wide entrance/scroll behaviour. Global rather
+   than per-component because these rules describe *how the app moves*, and
+   every page relying on the same three keyframes is what keeps navigating
+   between them from feeling like changing apps.
+   ========================================================================== */
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+}
+
+/* Page entrances. The router replaces the routed component element on every
+   navigation, so animating `.content`'s non-outlet children re-runs this per
+   route — no @angular/animations, no route-level wiring.
+   Deliberately no `both` fill: if the animation ever failed to start, the
+   resting cascade still paints the page (see the note in shared/poster.ts about
+   a Chromium reveal that stuck at opacity 0 — a blank page is never worth a
+   fade). */
+.content > :not(router-outlet) {
+  animation: rise-in var(--dur-3) var(--ease-out);
+}
+
+/* Sections inside a page arrive just behind it, in reading order, so a long
+   page resolves top-down instead of all at once. Capped at the first handful:
+   past the fold the user never sees the stagger, and a grid of 565 posters
+   should not carry 565 animation timers. */
+.page section,
+.page .poster-grid > *:nth-child(-n + 12) {
+  animation: rise-in var(--dur-3) var(--ease-out);
+}
+/* The stagger is built out of longer durations rather than `animation-delay`.
+   A delay needs `animation-fill-mode: backwards` to hold the from-state while
+   it waits, and without it the element paints solid for a frame and then jumps
+   back to invisible. Stretching the curve instead lands later with no flash and
+   no fill-mode to get stuck in. */
+.page section:nth-of-type(2) {
+  animation-duration: 400ms;
+}
+.page section:nth-of-type(3) {
+  animation-duration: 480ms;
+}
+.page section:nth-of-type(n + 4) {
+  animation-duration: 560ms;
+}
+.page .poster-grid > *:nth-child(n + 4) {
+  animation-duration: 400ms;
+}
+.page .poster-grid > *:nth-child(n + 8) {
+  animation-duration: 480ms;
+}
+
+/* Native <dialog> gets no entrance of its own. */
+dialog[open] {
+  animation: pop-in var(--dur-2) var(--ease-spring);
+}
+dialog[open]::backdrop {
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+
+/* ---- horizontal rails ----
+   The one-line strips (profile favourites, cast) share their scroll feel:
+   programmatic scrolls animate rather than teleport, the gesture stops at the
+   rail instead of leaking into the page (and, on trackpads, instead of
+   triggering the browser's back-swipe), and cards land on a card boundary.
+   `appWheelX` adds the eased wheel travel on top of this. */
+.rail,
+.cast-rail {
+  scroll-behavior: smooth;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline-start: 2px;
+}
+/* Snapping is a *touch* affordance — a swipe should come to rest on a card. With
+   a mouse or trackpad the eased wheel travel in `appWheelX` is the real control,
+   and proximity snapping actively fights it: Chrome's snap radius is wide enough
+   that a short scroll gets yanked straight back to where it started, so the rail
+   looks frozen. Hence hover-less devices only. */
+@media (hover: none) {
+  .rail,
+  .cast-rail {
+    scroll-snap-type: x proximity;
+  }
+}
+/* Cards in a rail lift on hover like poster cards do elsewhere. */
+.rail > *,
+.cast-rail > * {
+  scroll-snap-align: start;
+  transition: transform var(--dur-2) var(--ease-out);
+}
+@media (hover: hover) {
+  .rail > *:hover,
+  .cast-rail > *:hover {
+    transform: translateY(-3px);
+  }
+}
+
+/* Keyboard focus was invisible outside the browser default; give it the accent
+   ring and let it fade in with everything else. `:focus-visible` keeps it off
+   mouse clicks. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* One switch for everyone who asked the OS to calm things down. Not `none` —
+   a zero-length animation still fires its events, so anything gated on
+   `animationend` keeps working. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

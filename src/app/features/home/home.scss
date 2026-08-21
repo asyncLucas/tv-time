@@ -1,0 +1,202 @@
+:host {
+  display: block;
+}
+.hello h1 {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.hello .sub {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin-top: 6px;
+}
+
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  background: linear-gradient(120deg, var(--gold-soft), transparent);
+  border: 1px solid #3a3320;
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  margin: 24px 0;
+}
+.cta strong {
+  font-size: 15px;
+}
+.cta p {
+  color: var(--text-dim);
+  font-size: 13px;
+  margin: 4px 0 0;
+}
+.cta .btn {
+  white-space: nowrap;
+}
+
+section {
+  margin-top: 40px;
+}
+/* The page opens scrolled to this section, and `margin-top` doesn't count
+   toward where scrollIntoView lands — without this the heading sits flush
+   against the top edge. */
+#continue-watching {
+  scroll-margin-top: 20px;
+}
+section h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 16px;
+}
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.more {
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    color var(--dur-2) var(--ease-out),
+    transform var(--dur-2) var(--ease-out);
+  display: inline-block;
+}
+/* Nudges rightward on hover, in the direction it takes you. */
+.more:hover {
+  color: var(--gold);
+  transform: translateX(2px);
+}
+
+/* Every section on this page is the same rail of rows — history, what's next,
+   and what's shelved read as one continuous list rather than three layouts. */
+.nextup-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.nu-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  transition:
+    border-color var(--dur-2) var(--ease-out),
+    background var(--dur-2) var(--ease-out);
+}
+@media (hover: hover) {
+  .nu-row:hover {
+    border-color: #3a3f4a;
+    background: var(--bg-elev);
+  }
+}
+/* A row with no swipe wrapper around it has to paint its own ground — inside
+   app-swipe-row that comes from .swipe-fg, which slides with the gesture. */
+.nu-row.plain {
+  background: var(--bg-elev);
+}
+.nu-thumb {
+  width: 38px;
+  flex-shrink: 0;
+}
+.nu-main {
+  min-width: 0;
+  flex: 1;
+}
+.nu-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A button, so the episode line opens the episode while the row around it
+   still opens the show — reset to look like the text it replaced. */
+.nu-ep {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: left;
+  cursor: pointer;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nu-ep:hover,
+.nu-ep:hover .nu-code {
+  color: var(--gold);
+}
+.nu-ep:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+.nu-code {
+  color: var(--text);
+  font-weight: 600;
+}
+/* How much of the show is still ahead of you. */
+.nu-left {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-weight: 600;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+/* On a pointer device the hover buttons overlay this end of the row, so the
+   text steps aside far enough that they never sit on top of it.
+   Measured from the row's right edge (app-swipe-row): the primary button spans
+   10–40px and the secondary 46–76px, and .nu-row's own 10px padding already
+   covers the first 10px — so a row with one action clears at 30px and a row
+   with two at 66px. Both carry 4px past that, so the text stops short of the
+   buttons rather than running right up against them. */
+@media (hover: hover) {
+  .nu-left {
+    padding-right: 70px;
+  }
+  .nu-left.one {
+    padding-right: 34px;
+  }
+}
+
+/* Outcome of the last episode rating — including whether TMDB accepted it,
+   which the modal closes too fast to report itself. */
+.rate-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -12px 0 22px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  /* Appears after a rating is submitted, so it should arrive rather than blink. */
+  animation: rise-in var(--dur-3) var(--ease-out);
+}
+.rate-dismiss {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.rate-dismiss:hover {
+  color: var(--text);
+}
