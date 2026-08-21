@@ -112,8 +112,19 @@ export class PairingService {
   readonly link = signal<string | null>(null);
   /** Whether the code being offered includes the Gist token. */
   readonly sharesGistToken = signal(false);
-  /** What the joiner just received (so it can report what it turned on). */
-  readonly applied = signal<{ p2p: boolean; gist: boolean; tmdb: boolean } | null>(null);
+  /**
+   * What the joiner actually turned on — not what it was *sent*. A credential
+   * can arrive and still fail to take (a token GitHub refuses, a key the device
+   * already had), and a linking screen that reports the wish rather than the
+   * outcome is how someone ends up believing sync works when it doesn't.
+   */
+  readonly applied = signal<{
+    p2p: boolean;
+    gist: boolean;
+    tmdb: boolean;
+    /** Why cloud sync didn't come up, when it didn't. */
+    gistError?: string;
+  } | null>(null);
 
   readonly busy = computed(() => this.state() === 'connecting' || this.state() === 'linking');
 
@@ -389,17 +400,34 @@ export class PairingService {
    */
   private async applyCredentials(c: Credentials): Promise<void> {
     if (c.sig) this.docs.settings.set('signalingUrl', c.sig);
-    if (c.tmdb && !str(this.docs.settings.get('tmdbKey')))
-      this.docs.settings.set('tmdbKey', c.tmdb);
+
+    // A key already on this device wins — linking should not overwrite what
+    // someone typed here. Report success only if this device ends up holding
+    // the key that was sent, however it got there.
+    let tmdbOk = false;
+    if (c.tmdb) {
+      const existing = str(this.docs.settings.get('tmdbKey'));
+      if (!existing) this.docs.settings.set('tmdbKey', c.tmdb);
+      tmdbOk = !existing || existing === c.tmdb;
+    }
     await this.devices.reactivate();
 
     let gistOk = false;
+    let gistError: string | undefined;
     if (c.gist) {
       await this.gist.connect(c.gist); // resolves after the first pull+push
       gistOk = this.gist.status() !== 'error';
+      // connect() swallows its own failures into the status signal, so the
+      // reason lives there rather than in a rejection we could catch.
+      if (!gistOk) gistError = this.gist.error() ?? 'Cloud sync could not start on this device.';
     }
     if (c.room && c.pass) this.sync.connect(c.room, c.pass);
-    this.applied.set({ p2p: !!c.room, gist: gistOk, tmdb: !!c.tmdb });
+    this.applied.set({
+      p2p: !!c.room,
+      gist: gistOk,
+      tmdb: tmdbOk,
+      ...(gistError ? { gistError } : {}),
+    });
   }
 
   // ---------------------------------------------------------------------------

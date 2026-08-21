@@ -53,7 +53,9 @@ import { QrCode } from '../../shared/qr-code';
               <p class="lede">It's syncing now and shows up in your active sessions.</p>
               <a class="btn primary big" routerLink="/settings">Back to settings</a>
             } @else {
-              <h1>You're all set</h1>
+              <h1>
+                {{ pair.applied()?.gistError ? 'Linked, with one thing left' : "You're all set" }}
+              </h1>
               <p class="lede">
                 @if (pair.peerName()) {
                   This device is now part of your fleet, linked from
@@ -65,9 +67,20 @@ import { QrCode } from '../../shared/qr-code';
               </p>
               <ul class="applied">
                 <li [class.on]="pair.applied()?.p2p">Peer-to-peer sync connected</li>
-                <li [class.on]="pair.applied()?.gist">GitHub&nbsp;Gist cloud sync enabled</li>
+                @if (pair.applied()?.gist) {
+                  <li class="on">GitHub&nbsp;Gist cloud sync enabled</li>
+                } @else if (pair.applied()?.gistError) {
+                  <li class="failed">Cloud sync didn't start — {{ pair.applied()?.gistError }}</li>
+                }
                 <li [class.on]="pair.applied()?.tmdb">TMDB key copied over</li>
               </ul>
+              @if (pair.applied()?.gistError) {
+                <p class="warn">
+                  The token reached this device, but GitHub turned it away, so this device isn't on
+                  cloud sync yet. Peer-to-peer sync still works whenever both devices are open at
+                  once. Check the token under <strong>Settings → Cloud sync</strong>.
+                </p>
+              }
               <a class="btn primary big" routerLink="/">Open your library</a>
             }
           }
@@ -341,6 +354,15 @@ import { QrCode } from '../../shared/qr-code';
         content: '✓';
         color: var(--good);
         left: 4px;
+      }
+      .applied li.failed {
+        color: var(--text);
+      }
+      .applied li.failed::before {
+        content: '!';
+        color: var(--bad);
+        font-weight: 800;
+        left: 6px;
       }
       .qr-frame {
         background: #fff;
