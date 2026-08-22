@@ -1,4 +1,4 @@
-import { Injectable, computed, inject, signal } from '@angular/core';
+import { Injectable, computed, effect, inject, signal } from '@angular/core';
 import * as Y from 'yjs';
 import { WebrtcProvider } from 'y-webrtc';
 import { DeviceService, describeDevice } from './device.service';
@@ -30,6 +30,12 @@ export type PairState =
 export const PAIR_TTL_MS = 120_000;
 /** How long a joiner waits for the host to answer before giving up. */
 const CLAIM_TIMEOUT_MS = 30_000;
+/**
+ * How long linking waits for the P2P room to produce an actual peer before it
+ * reports on it. Comfortably inside CLAIM_TIMEOUT_MS, since the granting device
+ * is waiting for the ack that follows.
+ */
+const PEER_WAIT_MS = 8_000;
 const ROOM_PREFIX = 'tvtime-link-';
 /** Y.Map holding the handshake inside the throwaway pairing doc. */
 const HANDSHAKE = 'handshake';
@@ -140,6 +146,17 @@ export class PairingService {
   } | null>(null);
 
   readonly busy = computed(() => this.state() === 'connecting' || this.state() === 'linking');
+
+  constructor() {
+    // P2P can come up after the linked screen is already on show — a phone that
+    // was still negotiating when the timeout above expired, say. Report it the
+    // moment it does rather than leaving a stale cross on screen.
+    effect(() => {
+      const connected = this.sync.connected();
+      const applied = this.applied();
+      if (connected && applied && !applied.p2p) this.applied.set({ ...applied, p2p: true });
+    });
+  }
 
   private doc?: Y.Doc;
   private provider?: WebrtcProvider;
@@ -466,9 +483,16 @@ export class PairingService {
       // reason lives there rather than in a rejection we could catch.
       if (!gistOk) gistError = this.gist.error() ?? 'Cloud sync could not start on this device.';
     }
-    if (c.room && c.pass) this.sync.connect(c.room, c.pass);
+    // Wait for a peer rather than for the credentials to have *arrived*: a room
+    // name always applies cleanly, so reporting it as "connected" said nothing
+    // about whether the two devices can actually reach each other.
+    let p2p = false;
+    if (c.room && c.pass) {
+      this.sync.connect(c.room, c.pass);
+      p2p = await this.sync.whenConnected(PEER_WAIT_MS);
+    }
     this.applied.set({
-      p2p: !!c.room,
+      p2p,
       gist: gistOk,
       tmdb: tmdbOk,
       cloudShared: !!c.gist,

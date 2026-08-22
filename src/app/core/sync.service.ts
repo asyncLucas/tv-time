@@ -18,6 +18,8 @@ export const DEFAULT_SIGNALING_URL = 'wss://tv-time.lucasluizss.workers.dev';
 
 /** How long to wait for the signaling server before calling the room unreachable. */
 const SIGNALING_TIMEOUT_MS = 12_000;
+/** Poll interval for {@link SyncService.whenConnected}. */
+const PEER_POLL_MS = 250;
 
 /**
  * Decentralized sync for a single user's own device fleet.
@@ -156,6 +158,27 @@ export class SyncService {
     // room — and is still excluded from plaintext JSON exports.
     this.docs.settings.set('syncRoom', room);
     this.docs.settings.set('syncPass', password);
+  }
+
+  /**
+   * Resolve once a real peer is on the other end, or `false` if none shows up
+   * in time. "Connected" here means a peer, not a reachable signaling server:
+   * being alone in the room is the state that looks like sync and isn't.
+   */
+  whenConnected(timeoutMs: number): Promise<boolean> {
+    if (this.connected()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const deadline = Date.now() + timeoutMs;
+      const timer = setInterval(() => {
+        if (this.connected()) {
+          clearInterval(timer);
+          resolve(true);
+        } else if (Date.now() >= deadline) {
+          clearInterval(timer);
+          resolve(false);
+        }
+      }, PEER_POLL_MS);
+    });
   }
 
   disconnect(): void {

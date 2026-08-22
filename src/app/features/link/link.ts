@@ -64,7 +64,11 @@ import { QrCode } from '../../shared/qr-code';
                 }
               </p>
               <ul class="applied">
-                <li [class.on]="pair.applied()?.p2p">Peer-to-peer sync connected</li>
+                @if (pair.applied()?.p2p) {
+                  <li class="on">Peer-to-peer sync connected</li>
+                } @else {
+                  <li class="failed">Peer-to-peer sync hasn't reached your other device</li>
+                }
                 @if (pair.applied()?.gist) {
                   <li class="on">GitHub&nbsp;Gist cloud sync enabled</li>
                 } @else if (pair.applied()?.gistError) {
@@ -79,6 +83,13 @@ import { QrCode } from '../../shared/qr-code';
                   The token reached this device, but GitHub turned it away, so this device isn't on
                   cloud sync yet. Peer-to-peer sync still works whenever both devices are open at
                   once. Check the token under <strong>Settings → Cloud sync</strong>.
+                </p>
+              } @else if (nothingConnected()) {
+                <p class="warn">
+                  Neither channel is up: cloud sync wasn't included, and this device hasn't reached
+                  the other one directly. Nothing will arrive until one of them changes — connect a
+                  GitHub token under <strong>Settings → Cloud sync</strong> on either device, which
+                  works on any network, or open both devices at once on the same network.
                 </p>
               } @else if (!pair.applied()?.cloudShared) {
                 <p class="warn">
@@ -486,6 +497,12 @@ export class Link {
   protected readonly cloudMissing = computed(() => {
     const applied = this.pair.applied();
     return !!applied && !applied.gist;
+  });
+
+  /** Neither channel came up — the link exists on paper and nowhere else. */
+  protected readonly nothingConnected = computed(() => {
+    const applied = this.pair.applied();
+    return !!applied && !applied.gist && !applied.p2p;
   });
 
   protected readonly clock = computed(() => {
