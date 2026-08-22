@@ -62,6 +62,12 @@ interface Credentials {
   gist?: string;
   /** name of the device that granted the link, for the confirmation screen */
   from?: string;
+  /**
+   * When the link was granted, by the granting device's clock. The new device
+   * keeps it as its "authorized at" stamp, so a revocation is judged against
+   * the same clock that issued it rather than against a phone's own.
+   */
+  at?: string;
 }
 
 /**
@@ -134,6 +140,8 @@ export class PairingService {
   private tickTimer?: ReturnType<typeof setInterval>;
   /** Guards the one-shot rule: a code serves a single device. */
   private served = false;
+  /** Device id of the peer asking to join — needed to clear its tombstone. */
+  private peerId?: string;
 
   // ---------------------------------------------------------------------------
   // Host — the device that already has the library
@@ -159,13 +167,18 @@ export class PairingService {
       this.startCountdown();
 
       hs.observe(() => {
-        const req = hs.get('req') as { name?: string } | undefined;
+        const req = hs.get('req') as { id?: string; name?: string } | undefined;
         if (req && !this.served) {
           this.served = true;
           this.peerName.set(req.name ?? 'New device');
           this.state.set('linking');
           this.link.set(null); // the code is spent — stop showing it
           this.stopCountdown();
+          // Authorizing is also un-revoking: if this device was signed out from
+          // here before, its tombstone still sits in the fleet doc, and handing
+          // over credentials without clearing it would sync the new device
+          // straight back out again.
+          if (req.id) this.devices.authorize(req.id);
           hs.set('creds', {
             room,
             pass,
@@ -175,6 +188,7 @@ export class PairingService {
               : {}),
             ...(token ? { gist: token } : {}),
             from: this.devices.name(),
+            at: new Date().toISOString(),
           } satisfies Credentials);
         }
         if (hs.get('ack')) {
@@ -227,13 +241,13 @@ export class PairingService {
     this.sharesGistToken.set(!!str(this.config.get('gistToken')));
     try {
       const hs = this.openRoom(payload.i, payload.k, this.meetingPoints(payload.s));
-      const req = await new Promise<{ name?: string }>((resolve, reject) => {
+      const req = await new Promise<{ id?: string; name?: string }>((resolve, reject) => {
         // The announcement is usually already in the doc by the time we sync,
         // in which case no change event is ever coming — check before waiting.
-        const seen = hs.get('req') as { name?: string } | undefined;
+        const seen = hs.get('req') as { id?: string; name?: string } | undefined;
         if (seen) return resolve(seen);
         hs.observe(() => {
-          const r = hs.get('req') as { name?: string } | undefined;
+          const r = hs.get('req') as { id?: string; name?: string } | undefined;
           if (r) resolve(r);
         });
         this.ttlTimer = setTimeout(
@@ -242,6 +256,7 @@ export class PairingService {
         );
       });
       clearTimeout(this.ttlTimer);
+      this.peerId = req.id;
       this.peerName.set(req.name ?? 'New device');
       this.state.set('confirming');
     } catch (e) {
@@ -271,6 +286,10 @@ export class PairingService {
         );
       });
 
+      // See host(): granting the link is what clears an earlier sign-out of
+      // this same device, and it has to happen in the fleet's doc.
+      if (this.peerId) this.devices.authorize(this.peerId);
+
       hs.set('creds', {
         room,
         pass,
@@ -278,6 +297,7 @@ export class PairingService {
         ...(tmdb ? { tmdb } : {}),
         ...(token ? { gist: token } : {}),
         from: this.devices.name(),
+        at: new Date().toISOString(),
       } satisfies Credentials);
 
       await acked;
@@ -410,7 +430,7 @@ export class PairingService {
       if (!existing) this.docs.settings.set('tmdbKey', c.tmdb);
       tmdbOk = !existing || existing === c.tmdb;
     }
-    await this.devices.reactivate();
+    await this.devices.reactivate(c.at);
 
     let gistOk = false;
     let gistError: string | undefined;
@@ -490,6 +510,7 @@ export class PairingService {
   reset(): void {
     this.closeRoom();
     this.served = false;
+    this.peerId = undefined;
     this.state.set('idle');
     this.error.set(null);
     this.peerName.set(null);

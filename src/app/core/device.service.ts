@@ -121,8 +121,10 @@ export class DeviceService {
       this.sync.autoStart();
       return;
     }
-    // A revocation that landed while this device was offline still applies.
-    if (this.docs.revokedDevices.has(id)) return void this.signOutSelf(false);
+    // A revocation that landed while this device was offline still applies —
+    // unless this device has been re-linked since, which supersedes it.
+    if (this.isRevoked(id)) return void this.signOutSelf(false);
+    this.clearStaleRevocation();
     this.activate();
   }
 
@@ -144,16 +146,21 @@ export class DeviceService {
     // only reached us now, which is why the check is on the tombstone rather
     // than on our roster entry going missing.
     this.docs.revokedDevices.observe(() => {
-      if (!this._signedOut() && this.docs.revokedDevices.has(this._id())) {
-        void this.signOutSelf(false);
-      }
+      if (this._signedOut()) return;
+      if (this.isRevoked(this._id())) return void this.signOutSelf(false);
+      // A tombstone older than this device's latest link is spent. It arrives
+      // here routinely: linking merges the granting device's doc, which still
+      // held the entry from a previous sign-out. Clearing it now — on a doc
+      // that actually contains the key, unlike the pre-merge delete in
+      // reactivate() — is what makes the removal stick and propagate.
+      this.clearStaleRevocation();
     });
   }
 
   /** Refresh this device's roster entry (throttled — see TOUCH_MIN_GAP_MS). */
   private touch(): void {
     const id = this._id();
-    if (!id || this._signedOut() || this.docs.revokedDevices.has(id)) return;
+    if (!id || this._signedOut() || this.isRevoked(id)) return;
     const now = new Date();
     const prev = this.docs.devices.get(id) as DeviceRecord | undefined;
     if (prev?.lastSeen && now.getTime() - Date.parse(prev.lastSeen) < TOUCH_MIN_GAP_MS) return;
@@ -232,11 +239,54 @@ export class DeviceService {
    * Clearing our own tombstone is the one legitimate write to that map — the
    * user just re-authorized this device by scanning a live code.
    */
-  async reactivate(): Promise<void> {
+  async reactivate(at = new Date().toISOString()): Promise<void> {
+    // Stamp *before* clearing anything: a revocation is only spent if it
+    // predates this link, and the stamp is what later merges are judged
+    // against. It is device-local on purpose — a synced value would be
+    // overwritten by the very doc whose tombstone it has to outrank.
+    await this.config.set('linkedAt', at);
     this._signedOut.set(false);
     await this.config.delete('signedOut');
     this.docs.revokedDevices.delete(this._id());
     this.activate();
+  }
+
+  /**
+   * Clear another device's tombstone, called by the side that just authorized
+   * it. This is the removal that matters: it happens in the fleet's own doc,
+   * which is where the entry actually lives, so it converges everywhere instead
+   * of being a no-op on a doc that never had the key.
+   */
+  authorize(id: string): void {
+    if (id) this.docs.revokedDevices.delete(id);
+  }
+
+  /**
+   * Is this device revoked *now*? A tombstone stamped at or before its latest
+   * link is stale — the user re-authorized the device after signing it out, and
+   * the old entry must not undo that. Without the comparison a device that was
+   * ever signed out could never be re-linked: pairing merges the granting
+   * device's doc, the tombstone rides back in, and the observer above signs the
+   * freshly linked device straight back out.
+   */
+  private isRevoked(id: string): boolean {
+    const revokedAt = this.docs.revokedDevices.get(id);
+    if (!revokedAt) return false;
+    const revoked = Date.parse(revokedAt);
+    const linked = Date.parse(this.config.get<string>('linkedAt') ?? '');
+    // Never linked, or either stamp unreadable: honour the revocation. The
+    // comparison exists to let a *known* later link win, so anything it can't
+    // establish has to fall back to the tombstone.
+    if (Number.isNaN(revoked) || Number.isNaN(linked)) return true;
+    return revoked > linked;
+  }
+
+  /** Drop a spent tombstone for this device, so the fleet stops carrying it. */
+  private clearStaleRevocation(): void {
+    const id = this._id();
+    if (id && this.docs.revokedDevices.has(id) && !this.isRevoked(id)) {
+      this.docs.revokedDevices.delete(id);
+    }
   }
 }
 
