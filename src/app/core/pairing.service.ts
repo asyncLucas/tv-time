@@ -128,6 +128,13 @@ export class PairingService {
     p2p: boolean;
     gist: boolean;
     tmdb: boolean;
+    /**
+     * Whether the granting device had a Gist token to give at all. Absent is
+     * not the same failure as refused, and it is the one the new device can do
+     * nothing about — it has to be said out loud rather than shown as a missing
+     * tick, or a P2P-only link reads as a complete one.
+     */
+    cloudShared: boolean;
     /** Why cloud sync didn't come up, when it didn't. */
     gistError?: string;
   } | null>(null);
@@ -153,6 +160,7 @@ export class PairingService {
    */
   host(): void {
     this.reset();
+    if (this.refuseWhileSignedOut()) return;
     try {
       const { room, pass } = this.ensureFleetRoom();
       const id = randomToken(9);
@@ -203,6 +211,22 @@ export class PairingService {
   }
 
   /**
+   * A device that has been signed out is not in the fleet: its credentials were
+   * dropped on the way out, so granting a link would hand over a sync room and
+   * nothing else — which is exactly what a new device cannot tell apart from a
+   * working link. Say so instead of minting a code that can only disappoint.
+   */
+  private refuseWhileSignedOut(): boolean {
+    if (!this.devices.signedOut()) return false;
+    this.error.set(
+      'This device is signed out, so it has no library credentials to pass on. ' +
+        'Link it again — or reconnect cloud sync here — before adding another device.',
+    );
+    this.state.set('error');
+    return true;
+  }
+
+  /**
    * The room + passphrase the whole fleet shares, creating them on first use.
    * Connecting here is what persists them into the synced doc.
    */
@@ -237,6 +261,7 @@ export class PairingService {
       return;
     }
 
+    if (this.refuseWhileSignedOut()) return;
     this.state.set('connecting');
     this.sharesGistToken.set(!!str(this.config.get('gistToken')));
     try {
@@ -446,6 +471,7 @@ export class PairingService {
       p2p: !!c.room,
       gist: gistOk,
       tmdb: tmdbOk,
+      cloudShared: !!c.gist,
       ...(gistError ? { gistError } : {}),
     });
   }

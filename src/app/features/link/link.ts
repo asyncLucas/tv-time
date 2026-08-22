@@ -53,9 +53,7 @@ import { QrCode } from '../../shared/qr-code';
               <p class="lede">It's syncing now and shows up in your active sessions.</p>
               <a class="btn primary big" routerLink="/settings">Back to settings</a>
             } @else {
-              <h1>
-                {{ pair.applied()?.gistError ? 'Linked, with one thing left' : "You're all set" }}
-              </h1>
+              <h1>{{ cloudMissing() ? 'Linked, with one thing left' : "You're all set" }}</h1>
               <p class="lede">
                 @if (pair.peerName()) {
                   This device is now part of your fleet, linked from
@@ -71,6 +69,8 @@ import { QrCode } from '../../shared/qr-code';
                   <li class="on">GitHub&nbsp;Gist cloud sync enabled</li>
                 } @else if (pair.applied()?.gistError) {
                   <li class="failed">Cloud sync didn't start — {{ pair.applied()?.gistError }}</li>
+                } @else if (!pair.applied()?.cloudShared) {
+                  <li class="failed">Cloud sync wasn't included in this link</li>
                 }
                 <li [class.on]="pair.applied()?.tmdb">TMDB key copied over</li>
               </ul>
@@ -79,6 +79,14 @@ import { QrCode } from '../../shared/qr-code';
                   The token reached this device, but GitHub turned it away, so this device isn't on
                   cloud sync yet. Peer-to-peer sync still works whenever both devices are open at
                   once. Check the token under <strong>Settings → Cloud sync</strong>.
+                </p>
+              } @else if (!pair.applied()?.cloudShared) {
+                <p class="warn">
+                  The device you linked from isn't on cloud sync itself, so it had no token to pass
+                  along. Until one of your devices connects a GitHub token, these two only exchange
+                  changes while both are open at the same time — and your library won't download
+                  here on its own. Connect a token under <strong>Settings → Cloud sync</strong> on
+                  either device.
                 </p>
               }
               <a class="btn primary big" routerLink="/">Open your library</a>
@@ -469,6 +477,16 @@ export class Link {
   protected readonly granting = computed(
     () => this.asGrantor() || !!decodeLink(this.code() ?? '')?.o,
   );
+
+  /**
+   * Cloud sync did not come up — refused, or never offered. Both leave this
+   * device on peer-to-peer only, which is a materially weaker link than the
+   * screen would otherwise imply.
+   */
+  protected readonly cloudMissing = computed(() => {
+    const applied = this.pair.applied();
+    return !!applied && !applied.gist;
+  });
 
   protected readonly clock = computed(() => {
     const s = this.pair.secondsLeft();

@@ -11,6 +11,7 @@ import { LucideAngularModule, Camera as CameraIcon, QrCode as QrCodeIcon } from 
 import { QrCode } from '../../shared/qr-code';
 import { QrScanner } from '../../shared/qr-scanner';
 import { PairingService, codePart, decodeLink } from '../../core/pairing.service';
+import { DeviceService } from '../../core/device.service';
 import { GistSyncService } from '../../core/gist-sync.service';
 
 /**
@@ -127,7 +128,13 @@ import { GistSyncService } from '../../core/gist-sync.service';
           <button class="btn primary" (click)="retry()">Try again</button>
         }
         @default {
-          @if (scanning()) {
+          @if (devices.signedOut()) {
+            <p class="hint warn">
+              This device is signed out, so it has nothing to pass on — a link from here would give
+              the other device a sync room and no library. Link this device again from one that is
+              signed in, or reconnect cloud sync above, and this card comes back.
+            </p>
+          } @else if (scanning()) {
             <div class="pairing">
               <app-qr-scanner (scanned)="use($event)" (failed)="noCamera.set(true)" />
               <div class="steps">
@@ -377,6 +384,7 @@ import { GistSyncService } from '../../core/gist-sync.service';
 export class LinkDeviceCard implements OnDestroy {
   protected pair = inject(PairingService);
   protected gist = inject(GistSyncService);
+  protected devices = inject(DeviceService);
   private router = inject(Router);
   protected readonly QrIcon = QrCodeIcon;
   protected readonly CameraIcon = CameraIcon;
